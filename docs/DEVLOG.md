@@ -283,3 +283,31 @@ purpose: accurate Platonus PDF grouping, default СРСП filtering, checkbox re
 tests: 29 passed; Python compilation and JavaScript syntax checks passed
 attack checks: multiline/noise grouping, empty slots, unknown types, Unicode, file bounds, no-auto-save, atomic import, migration, desktop/mobile containment
 known limitations: see section above
+
+## 2026-09-02 - Deadline management and Settings card order
+
+### Product changes
+
+- Added one clear manual entry point, `+ Дедлайн`, to Today.
+- Deadlines can now be created, opened from Today or Calendar, edited, deleted after explicit confirmation, and switched between active and completed in the same dialog.
+- Manual and Student AI deadlines remain rows in the same owned `deadlines` table and use the same edit/delete flow. Saving immediately refreshes Today and Calendar.
+- The focused model remains title, subject, date/time, description, completion status, and immutable origin. No recurring events, reminders, drag-and-drop, sync, authentication, or notifications were added.
+- Desktop Settings columns now read `Внешний вид → Расписание` and `Student AI → Данные`; mobile remains `Внешний вид → Расписание → Student AI → Данные`.
+
+### Tests and attack pass
+
+- Full suite: 38 passed; only the existing Starlette/httpx deprecation warning remains.
+- Covered past dates, existing date-only-to-midnight semantics, blank/oversized values, Unicode, duplicate submit idempotence, missing rows, foreign `user_id`, full CRUD, completion state, and Student AI deadlines edited through the common endpoint.
+- Updates and deletes require both row id and `user_id`; SQL remains parameterized. Deadline text is rendered with `textContent`, not HTML injection.
+- `git diff --check` passed. JavaScript syntax validation could not be rerun because Node.js was not on this shell's PATH; a fresh visual browser pass was intentionally not started after the explicit compute-limit instruction.
+
+### Git checkpoint
+
+Git checkpoint:
+commit: 2441495
+branch: main
+pushed: YES
+purpose: complete owned deadline CRUD, unified manual/AI editing, Today/Calendar interaction, and Settings card order
+tests: 38 passed
+attack checks: input bounds, date semantics, duplicate submit, missing/foreign rows, immutable origin, parameterized SQL, safe DOM rendering
+known limitations: date-only API input uses midnight; visual browser QA was not rerun in this constrained checkpoint
