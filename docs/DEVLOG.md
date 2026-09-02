@@ -163,12 +163,12 @@ Add schedule/deadline editing and authentication before any public multi-user st
 - Mobile optional week view rendered all five day columns vertically at the same x-position and width.
 - Browser console contained no Student OS warnings or errors.
 
-### Checkpoint pending
+### Git checkpoint
 
 Git checkpoint:
-commit: pending
+commit: 15acd443a19affa51fb4850b8494c6783aaa50b5
 branch: main
-pushed: NO
+pushed: YES
 purpose: product-directed UI/UX refinement, Russian README, and Telegram integration architecture
 tests: 12 passed; `python -m compileall -q app tests` passed
 attack checks: existing-database migration, viewport containment, separate device preferences, visible-label regression
@@ -176,4 +176,4 @@ known limitations: Telegram login, credits adapter, and cloud sync remain docume
 
 ### Next technical step
 
-Scan staged public content for secrets, commit, push, and verify CI.
+Verify GitHub Actions for the pushed checkpoint.
