@@ -276,9 +276,9 @@ known limitations: see section above
 ### Git checkpoint
 
 Git checkpoint:
-commit: pending
+commit: b1153535e04cbc1dbfebe2a432478b47156170fc
 branch: main
-pushed: pending
+pushed: YES
 purpose: accurate Platonus PDF grouping, default СРСП filtering, checkbox regression fix, and compact desktop Settings
 tests: 29 passed; Python compilation and JavaScript syntax checks passed
 attack checks: multiline/noise grouping, empty slots, unknown types, Unicode, file bounds, no-auto-save, atomic import, migration, desktop/mobile containment
