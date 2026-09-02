@@ -110,17 +110,17 @@ known limitations: feature implementation was not part of this initial commit
 - No assignment history, deadline edit/delete UI, recurring events, notification system, file inputs, or PWA manifest/service worker.
 - Calendar is a month grid, not a full timezone-aware calendaring engine.
 
-### Checkpoint pending
+### Git checkpoint
 
 Git checkpoint:
-commit: pending
+commit: b8efbc65257a49aa2c7d6d44a98136b64b10c043
 branch: main
-pushed: NO
+pushed: YES
 purpose: complete local Student OS v0.1 vertical slice with CI
-tests: 9 passed; compile check pending final run
+tests: 9 passed; `python -m compileall -q app tests` passed
 attack checks: input boundaries, Unicode, injection-shaped input, duplicate action, XSS rendering boundary, mobile overflow
 known limitations: see section above
 
 ### Next technical step
 
-Run the final compile/test/secret checks, push the stable checkpoint, and verify GitHub Actions.
+Verify GitHub Actions, then add schedule/deadline editing and authentication before any public multi-user staging.
