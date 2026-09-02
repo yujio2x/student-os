@@ -87,6 +87,7 @@ known limitations: feature implementation was not part of this initial commit
 - Browser flow verified: AI Study -> defense -> editable deadline -> save -> calendar -> completion toggle.
 - Browser responsive QA at 390x844 exposed a horizontal overflow that moved schedule settings off-screen. Fixed with min-width containment and a mobile flex scroller; recheck showed body width exactly 390px.
 - Browser console: no warnings or errors from Student OS.
+- GitHub Actions CI completed successfully for both the feature commit (`b8efbc6`, 23s) and checkpoint-record commit (`e88c5c3`, 20s).
 
 ### Security and privacy
 
@@ -123,4 +124,4 @@ known limitations: see section above
 
 ### Next technical step
 
-Verify GitHub Actions, then add schedule/deadline editing and authentication before any public multi-user staging.
+Add schedule/deadline editing and authentication before any public multi-user staging.
