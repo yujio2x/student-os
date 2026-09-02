@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Student OS - расписание, AI Study и дедлайны в одном рабочем пространстве.">
+  <title>Student OS</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#today" aria-label="Student OS">
+        <span class="brand-mark">S</span><span>Student OS</span>
+      </a>
+      <nav aria-label="Основная навигация">
+        <button class="nav-item active" data-target="today"><span>⌂</span> Сегодня</button>
+        <button class="nav-item" data-target="schedule"><span>▦</span> Расписание</button>
+        <button class="nav-item" data-target="study"><span>✦</span> AI Study</button>
+        <button class="nav-item" data-target="calendar"><span>◫</span> Календарь</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot"></span>
+        <span id="aiMode">AI: проверка…</span>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="dateLabel"></p>
+          <h1 id="pageTitle">Сегодня</h1>
+        </div>
+        <button class="icon-button" id="themeToggle" aria-label="Переключить тему">◐</button>
+      </header>
+
+      <section id="today" class="page active" aria-labelledby="pageTitle">
+        <div class="hero card">
+          <div>
+            <p class="eyebrow">Следующее занятие</p>
+            <h2 id="nextLessonTitle">Загрузка…</h2>
+            <p id="nextLessonMeta" class="muted"></p>
+          </div>
+          <button class="primary" data-jump="schedule">Открыть расписание</button>
+        </div>
+        <div class="two-columns">
+          <article class="card">
+            <div class="section-head"><h2>Сегодня</h2><button class="text-button" data-jump="schedule">Вся неделя</button></div>
+            <div id="todayLessons" class="stack"></div>
+          </article>
+          <article class="card">
+            <div class="section-head"><h2>Ближайшие дедлайны</h2><button class="text-button" data-jump="calendar">Календарь</button></div>
+            <div id="upcomingDeadlines" class="stack"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="schedule" class="page">
+        <div class="toolbar card compact">
+          <div class="segmented" aria-label="Вид расписания">
+            <button id="weekView" class="active">Неделя</button>
+            <button id="dayView">День</button>
+          </div>
+          <details class="field-settings">
+            <summary>Показывать поля</summary>
+            <div id="fieldOptions" class="popover">
+              <label><input type="checkbox" value="room"> Кабинет</label>
+              <label><input type="checkbox" value="teacher"> Преподаватель</label>
+              <label><input type="checkbox" value="lesson_type"> Тип занятия</label>
+              <label><input type="checkbox" value="group_name"> Группа</label>
+              <label><input type="checkbox" value="notes"> Заметки</label>
+            </div>
+          </details>
+        </div>
+        <div id="scheduleGrid" class="schedule-grid"></div>
+      </section>
+
+      <section id="study" class="page">
+        <div class="study-layout">
+          <form id="studyForm" class="card study-form">
+            <p class="eyebrow">Assignment → понимание → защита</p>
+            <h2>Разобрать задание</h2>
+            <label>Предмет <input id="studySubject" maxlength="120" placeholder="Например, Алгоритмы"></label>
+            <label>Название <input id="studyTitle" maxlength="160" placeholder="Лабораторная работа №2"></label>
+            <label>Условие <textarea id="assignment" minlength="3" maxlength="12000" required placeholder="Вставьте условие. Если в нём есть дата вида 2026-09-10, Student OS предложит дедлайн."></textarea></label>
+            <div class="form-foot"><span id="charCount" class="muted">0 / 12 000</span><button class="primary" type="submit">Получить разбор</button></div>
+          </form>
+          <div id="studyResult" class="study-result empty-state card">
+            <span class="empty-icon">✦</span>
+            <h2>Здесь появится понятный разбор</h2>
+            <p>С объяснением, проверками и обязательной подготовкой к защите.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="calendar" class="page">
+        <div class="calendar-head card compact">
+          <button class="icon-button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+          <h2 id="calendarMonth"></h2>
+          <button class="icon-button" id="nextMonth" aria-label="Следующий месяц">›</button>
+        </div>
+        <div id="calendarGrid" class="calendar-grid card"></div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
+

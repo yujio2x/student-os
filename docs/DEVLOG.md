@@ -40,15 +40,87 @@ No secrets or private bot data are copied. Only synthetic seed examples may ente
 ### Current checkpoint
 
 Git checkpoint:
+commit: 54d119a
+branch: main
+pushed: YES
+purpose: safe repository foundation and documented migration audit
+tests: staged secret scan
+attack checks: no obvious credential patterns in staged content
+known limitations: feature implementation was not part of this initial commit
+
+## 2026-09-02 - Working v0.1 vertical slice
+
+### Implementation
+
+- Added a FastAPI application with SQLite persistence and a framework-free responsive client.
+- Added synthetic schedule seed data. No data from the live Telegram bot/database was copied.
+- Added Today, Schedule, AI Study, and Calendar views as one visual product.
+- Schedule supports week/day view and persisted visibility for room, teacher, lesson type, group, and notes.
+- AI Study accepts text assignments up to 12,000 characters and returns analysis, explanation, approach, checks, "How to Defend", likely teacher questions, and pitfalls.
+- Without `OPENAI_API_KEY`, a clearly labelled deterministic demo result keeps the entire product flow testable.
+- With `OPENAI_API_KEY`, the Responses API uses `store=False` and a strict JSON schema. The schema prevents arbitrary response shape drift and treats `suggested_due_at` as nullable.
+- AI deadline extraction is a suggestion only. The user reviews/edits title, subject, and date before an explicit save.
+- Saved deadlines appear in both Today and Calendar and can be marked complete.
+- Duplicate deadline submissions with the same user/title/time/source are idempotent.
+- User-owned tables include `user_id` to avoid a future schema rewrite, but the current application intentionally uses one local demo user until authentication is designed.
+
+### Changed files
+
+- `app/config.py`: environment configuration.
+- `app/database.py`: schema, synthetic seed, preferences, schedule, and deadline persistence.
+- `app/ai_service.py`: migrated study/defense concepts, demo mode, live structured Responses integration.
+- `app/main.py`: validated API and static client serving.
+- `static/index.html`, `static/styles.css`, `static/app.js`: complete responsive UI and client flow.
+- `tests/test_vertical_slice.py`: contract, persistence, boundaries, duplicate, and injection-shaped input checks.
+- `.github/workflows/ci.yml`: Python 3.12 install, compile, and test CI.
+
+### Tests and attack checks
+
+- `python -m pytest tests -q`: 9 passed.
+- First sandboxed run failed before test setup because Windows denied pytest's default temp directory. Running the same suite with normal local test permissions succeeded; this was an environment failure, not a product failure.
+- Checked empty, whitespace-only, too-short, and 12,001-character assignment input.
+- Checked malformed date, Unicode, emoji, and prompt-injection-shaped assignment content.
+- Checked AI analysis does not save a deadline.
+- Checked duplicate deadline submissions do not create duplicate rows.
+- Checked unsupported and duplicate preference fields are rejected.
+- Checked deadline update ownership boundary returns 404 for unavailable IDs.
+- Browser flow verified: AI Study -> defense -> editable deadline -> save -> calendar -> completion toggle.
+- Browser responsive QA at 390x844 exposed a horizontal overflow that moved schedule settings off-screen. Fixed with min-width containment and a mobile flex scroller; recheck showed body width exactly 390px.
+- Browser console: no warnings or errors from Student OS.
+
+### Security and privacy
+
+- `.env`, SQLite runtime databases, uploads, logs, caches, and virtual environments are ignored.
+- Staged files must be scanned before each public push.
+- SQL uses parameterized statements. API inputs have bounded lengths and enum/pattern validation.
+- The client renders user/AI content with `textContent`, not `innerHTML`, preventing obvious stored HTML/script execution.
+- Live AI instructions explicitly treat assignment content as untrusted and preserve the response contract.
+- No authentication exists yet; do not expose this checkpoint as a multi-user public service.
+
+### Official OpenAI documentation check
+
+- The configured `gpt-5.6-luna` model supports the Responses endpoint and Structured Outputs.
+- Updated the live format from legacy JSON mode to strict `json_schema`, matching current official guidance.
+
+### Known limitations
+
+- Live API behavior was not exercised because no new credential was requested or copied; demo mode and schema construction are tested locally.
+- Single local user only; user isolation is represented in persistence but not authenticated.
+- Schedule rows are synthetic and read-only in the UI.
+- No assignment history, deadline edit/delete UI, recurring events, notification system, file inputs, or PWA manifest/service worker.
+- Calendar is a month grid, not a full timezone-aware calendaring engine.
+
+### Checkpoint pending
+
+Git checkpoint:
 commit: pending
 branch: main
 pushed: NO
-purpose: safe repository foundation and documented migration audit
-tests: pending scaffold checks
-attack checks: pending staged secret scan
-known limitations: feature implementation has not started
+purpose: complete local Student OS v0.1 vertical slice with CI
+tests: 9 passed; compile check pending final run
+attack checks: input boundaries, Unicode, injection-shaped input, duplicate action, XSS rendering boundary, mobile overflow
+known limitations: see section above
 
 ### Next technical step
 
-Implement persistence and domain contracts for lessons, assignments, AI study results, and editable deadlines.
-
+Run the final compile/test/secret checks, push the stable checkpoint, and verify GitHub Actions.
