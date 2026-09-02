@@ -4,14 +4,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.ai_service import StudyService
 from app.config import Settings, load_settings
-from app.database import Database
+from app.database import Database, LessonConflictError
+from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 
 
 LOCAL_USER = "local-demo-user"
@@ -64,10 +65,48 @@ class PreferencesUpdate(BaseModel):
         return value
 
 
+class LessonInput(BaseModel):
+    weekday: int = Field(ge=0, le=6)
+    subject: str = Field(min_length=1, max_length=120)
+    starts_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    ends_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    room: str = Field(default="", max_length=80)
+    teacher: str = Field(default="", max_length=120)
+    lesson_type: str = Field(default="", max_length=80)
+    group_name: str = Field(default="", max_length=80)
+    notes: str = Field(default="", max_length=1000)
+
+    @field_validator("subject")
+    @classmethod
+    def subject_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("subject must contain visible text")
+        return value.strip()
+
+    @field_validator("room", "teacher", "lesson_type", "group_name", "notes")
+    @classmethod
+    def trim_optional_fields(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def valid_time_range(self):
+        if self.starts_at >= self.ends_at:
+            raise ValueError("starts_at must be earlier than ends_at")
+        return self
+
+    def record(self) -> dict:
+        return self.model_dump()
+
+
+class ImportConfirm(BaseModel):
+    lessons: list[LessonInput] = Field(min_length=1, max_length=100)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or load_settings()
     database = Database(config.database_path)
     study = StudyService(config.openai_api_key, config.openai_model)
+    schedule_import = ScheduleImportService(config.openai_api_key, config.openai_model)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -78,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
     app.state.database = database
     app.state.study = study
+    app.state.schedule_import = schedule_import
 
     @app.get("/api/health")
     def health() -> dict:
@@ -98,6 +138,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return study.analyze(payload.assignment, payload.subject, payload.title).to_dict()
         except Exception as exc:
             raise HTTPException(status_code=502, detail="AI analysis failed safely; no deadline was saved") from exc
+
+    @app.post("/api/lessons", status_code=201)
+    def create_lesson(payload: LessonInput) -> dict:
+        try:
+            return database.add_lesson(LOCAL_USER, payload.record())
+        except LessonConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.put("/api/lessons/{lesson_id}")
+    def update_lesson(lesson_id: int, payload: LessonInput) -> dict:
+        try:
+            result = database.update_lesson(LOCAL_USER, lesson_id, payload.record())
+        except LessonConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail="Занятие не найдено")
+        return result
+
+    @app.delete("/api/lessons/{lesson_id}", status_code=204)
+    def delete_lesson(lesson_id: int) -> Response:
+        if not database.delete_lesson(LOCAL_USER, lesson_id):
+            raise HTTPException(status_code=404, detail="Занятие не найдено")
+        return Response(status_code=204)
+
+    @app.post("/api/schedule/import/preview")
+    async def preview_schedule_import(file: UploadFile = File(...)) -> dict:
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        await file.close()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Файл превышает лимит 6 МБ")
+        try:
+            lessons = app.state.schedule_import.extract(
+                file.filename or "", file.content_type or "application/octet-stream", data
+            )
+        except ScheduleImportError as exc:
+            status = 503 if "OPENAI_API_KEY" in str(exc) else 422
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502, detail="Распознавание не завершено; расписание не изменено"
+            ) from exc
+        return {
+            "lessons": lessons,
+            "source": file.filename,
+            "saved": False,
+            "notice": "Проверьте и исправьте все строки перед подтверждением",
+        }
+
+    @app.post("/api/schedule/import/confirm", status_code=201)
+    def confirm_schedule_import(payload: ImportConfirm) -> dict:
+        try:
+            lessons = database.import_lessons(
+                LOCAL_USER, [lesson.record() for lesson in payload.lessons]
+            )
+        except LessonConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"lessons": lessons, "imported": len(lessons)}
 
     @app.post("/api/deadlines", status_code=201)
     def create_deadline(payload: DeadlineCreate) -> dict:

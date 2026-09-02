@@ -39,6 +39,15 @@ def test_visible_ui_uses_student_ai_and_russian_labels(client: TestClient) -> No
     assert "Задание → понимание → защита" in html
     assert "Assignment" not in html
     assert "brand-mark" not in html
+    assert "Открыть меню" in html
+    assert "Контакты" in html
+    assert "База знаний" in html
+    assert "Настройки" in html
+    assert 'id="lessonDialog"' in html
+    assert 'id="importDialog"' in html
+    assert "privacy review" not in html
+    assert "credits" not in html
+    assert "обязательным preview" not in html
 
 
 def test_assignment_analysis_has_defense_and_does_not_auto_save_deadline(client: TestClient) -> None:

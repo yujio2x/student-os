@@ -1,217 +1,83 @@
-const state = {
-  lessons: [], deadlines: [], preferences: null,
-  calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-};
-const dayNames = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-const shortDays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const state={lessons:[],deadlines:[],preferences:null,importRows:[],calendarDate:new Date(new Date().getFullYear(),new Date().getMonth(),1)};
+const dayNames=["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"];
+const shortDays=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const fieldLabels={room:"Кабинет",teacher:"Преподаватель",lesson_type:"Тип",group_name:"Группа",notes:"Заметки"};
+const optionalFields=Object.keys(fieldLabels);
 
-const api = async (url, options = {}) => {
-  const response = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.detail || `Ошибка ${response.status}`);
-  }
-  return response.json();
-};
+async function api(url,options={}){
+  const headers=options.body instanceof FormData?{}:{"Content-Type":"application/json"};
+  const response=await fetch(url,{...options,headers:{...headers,...(options.headers||{})}});
+  if(!response.ok){const data=await response.json().catch(()=>({}));const detail=Array.isArray(data.detail)?data.detail.map(x=>x.msg).join("; "):data.detail;throw new Error(detail||`Ошибка ${response.status}`);}
+  return response.status===204?null:response.json();
+}
+const localDateKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const parseLocalDate=v=>new Date(v.length===10?`${v}T00:00:00`:v);
+function element(tag,className="",text=""){const node=document.createElement(tag);if(className)node.className=className;node.textContent=text;return node;}
+function toast(message){const node=document.querySelector("#toast");node.textContent=message;node.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.classList.remove("show"),3000);}
 
-const escapeText = value => String(value ?? "");
-const localDateKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-const parseLocalDate = value => new Date(value.length === 10 ? `${value}T00:00:00` : value);
+function closeDrawer(){const d=document.querySelector("#mobileDrawer");d.classList.remove("open");d.setAttribute("aria-hidden","true");document.querySelector("#drawerBackdrop").hidden=true;}
+function openDrawer(){const d=document.querySelector("#mobileDrawer");d.classList.add("open");d.setAttribute("aria-hidden","false");document.querySelector("#drawerBackdrop").hidden=false;d.querySelector("button").focus();}
+function navigate(target){const titles={today:"Сегодня",schedule:"Расписание",study:"Student AI",calendar:"Календарь",contacts:"Контакты",library:"База знаний",settings:"Настройки"};if(!titles[target])target="today";document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===target));document.querySelectorAll(".app-nav").forEach(x=>x.classList.toggle("active",x.dataset.target===target));document.querySelector("#pageTitle").textContent=titles[target];history.replaceState(null,"",`#${target}`);closeDrawer();}
 
-function toast(message) {
-  const node = document.querySelector("#toast");
-  node.textContent = message;
-  node.classList.add("show");
-  setTimeout(() => node.classList.remove("show"), 2600);
+function lessonDetails(lesson){return state.preferences.visible_fields.filter(f=>lesson[f]).map(f=>`${fieldLabels[f]}: ${lesson[f]}`);}
+function lessonNode(lesson){const card=element("button","lesson-card");card.type="button";card.setAttribute("aria-label",`Изменить занятие ${lesson.subject}, ${lesson.starts_at}`);card.append(element("div","lesson-time",`${lesson.starts_at}–${lesson.ends_at}`),element("h3","",lesson.subject));lessonDetails(lesson).forEach(v=>card.append(element("p","lesson-detail",v)));card.addEventListener("click",()=>openLessonDialog(lesson));return card;}
+function sortLessons(){state.lessons.sort((a,b)=>a.weekday-b.weekday||a.starts_at.localeCompare(b.starts_at));}
+
+function renderToday(){
+  const now=new Date(),weekday=(now.getDay()+6)%7,today=state.lessons.filter(x=>x.weekday===weekday),container=document.querySelector("#todayLessons");container.replaceChildren();
+  if(!today.length)container.append(element("p","empty-copy","Сегодня занятий нет."));
+  today.forEach(lesson=>{const row=element("div","list-item"),copy=element("div");row.append(element("span","time-badge",lesson.starts_at));copy.append(element("h3","",lesson.subject),element("p","muted",lessonDetails(lesson).join(" · ")||`${lesson.starts_at}–${lesson.ends_at}`));row.append(copy);container.append(row);});
+  const minutes=now.getHours()*60+now.getMinutes(),future=today.find(x=>Number(x.ends_at.slice(0,2))*60+Number(x.ends_at.slice(3))>minutes);
+  document.querySelector("#nextLessonTitle").textContent=future?.subject||(today.length?"Занятия на сегодня закончились":"Свободный день");document.querySelector("#nextLessonMeta").textContent=future?`${future.starts_at}–${future.ends_at} · ${future.room||"кабинет не указан"}`:"Можно заняться ближайшим дедлайном.";
+  const upcoming=document.querySelector("#upcomingDeadlines"),active=state.deadlines.filter(x=>!x.completed).slice(0,4);upcoming.replaceChildren();if(!active.length)upcoming.append(element("p","empty-copy","Нет сохранённых дедлайнов."));active.forEach(d=>{const row=element("div","list-item"),copy=element("div");row.append(element("span","time-badge",parseLocalDate(d.due_at).toLocaleDateString("ru",{day:"2-digit",month:"short"})));copy.append(element("h3","",d.title),element("p","muted",d.subject||"Без предмета"));row.append(copy);upcoming.append(row);});
 }
 
-function element(tag, className = "", text = "") {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  node.textContent = text;
-  return node;
+function renderSchedule(){
+  const grid=document.querySelector("#scheduleGrid"),today=(new Date().getDay()+6)%7,mobile=matchMedia("(max-width: 900px)").matches,view=mobile?state.preferences.mobile_schedule_view:state.preferences.schedule_view,days=view==="day"?[today]:[0,1,2,3,4,5,6];grid.replaceChildren();
+  days.forEach(day=>{const column=element("section","day-column"),heading=element("p","day-heading");heading.append(element("strong","",dayNames[day]));if(day===today)heading.append(document.createTextNode("Сегодня"));column.append(heading);const lessons=state.lessons.filter(x=>x.weekday===day);if(!lessons.length)column.append(element("div","card empty-copy","Занятий нет"));lessons.forEach(x=>column.append(lessonNode(x)));grid.append(column);});
+  document.querySelector("#weekView").classList.toggle("active",view==="week");document.querySelector("#dayView").classList.toggle("active",view==="day");syncSettingsControls();
 }
 
-function navigate(target) {
-  document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === target));
-  document.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.target === target));
-  const titles = {today: "Сегодня", schedule: "Расписание", study: "Student AI", calendar: "Календарь"};
-  document.querySelector("#pageTitle").textContent = titles[target];
-  window.location.hash = target;
+function buildFieldControls(container){optionalFields.forEach(f=>{const label=element("label",container.id==="settingsFieldOptions"?"settings-field":""),input=document.createElement("input");input.type="checkbox";input.value=f;label.append(input,document.createTextNode(fieldLabels[f]));container.append(label);});}
+function syncSettingsControls(){document.querySelectorAll("#fieldOptions input, #settingsFieldOptions input").forEach(x=>x.checked=state.preferences.visible_fields.includes(x.value));document.querySelectorAll("#themeChoice button").forEach(x=>x.classList.toggle("active",x.dataset.value===state.preferences.theme));document.querySelector("#desktopViewSetting").value=state.preferences.schedule_view;document.querySelector("#mobileViewSetting").value=state.preferences.mobile_schedule_view;}
+function lessonPayload(){return{weekday:Number(document.querySelector("#lessonWeekday").value),subject:document.querySelector("#lessonSubject").value.trim(),starts_at:document.querySelector("#lessonStart").value,ends_at:document.querySelector("#lessonEnd").value,room:document.querySelector("#lessonRoom").value.trim(),teacher:document.querySelector("#lessonTeacher").value.trim(),lesson_type:document.querySelector("#lessonType").value.trim(),group_name:document.querySelector("#lessonGroup").value.trim(),notes:document.querySelector("#lessonNotes").value.trim()};}
+
+function openLessonDialog(lesson=null){
+  document.querySelector("#lessonForm").reset();document.querySelector("#lessonError").textContent="";document.querySelector("#lessonId").value=lesson?.id||"";document.querySelector("#lessonDialogTitle").textContent=lesson?"Изменить занятие":"Новое занятие";document.querySelector("#deleteLesson").hidden=!lesson;
+  if(lesson){const values={Weekday:lesson.weekday,Subject:lesson.subject,Start:lesson.starts_at,End:lesson.ends_at,Room:lesson.room,Teacher:lesson.teacher,Type:lesson.lesson_type,Group:lesson.group_name,Notes:lesson.notes};Object.entries(values).forEach(([k,v])=>document.querySelector(`#lesson${k}`).value=v??"");}else document.querySelector("#lessonWeekday").value=(new Date().getDay()+6)%7;
+  document.querySelector("#lessonDialog").showModal();setTimeout(()=>document.querySelector("#lessonSubject").focus(),0);
 }
+async function saveLesson(event){event.preventDefault();const id=document.querySelector("#lessonId").value,button=event.currentTarget.querySelector("button[type=submit]");button.disabled=true;document.querySelector("#lessonError").textContent="";try{const saved=await api(id?`/api/lessons/${id}`:"/api/lessons",{method:id?"PUT":"POST",body:JSON.stringify(lessonPayload())}),index=state.lessons.findIndex(x=>x.id===saved.id);if(index>=0)state.lessons[index]=saved;else state.lessons.push(saved);sortLessons();renderToday();renderSchedule();document.querySelector("#lessonDialog").close();toast(id?"Занятие обновлено":"Занятие добавлено");}catch(error){document.querySelector("#lessonError").textContent=error.message;}finally{button.disabled=false;}}
+async function deleteLesson(){const id=document.querySelector("#lessonId").value,lesson=state.lessons.find(x=>String(x.id)===id);if(!lesson||!confirm(`Удалить занятие «${lesson.subject}»? Это действие нельзя отменить.`))return;try{await api(`/api/lessons/${id}`,{method:"DELETE"});state.lessons=state.lessons.filter(x=>String(x.id)!==id);renderToday();renderSchedule();document.querySelector("#lessonDialog").close();toast("Занятие удалено");}catch(error){document.querySelector("#lessonError").textContent=error.message;}}
 
-function lessonDetails(lesson) {
-  const labels = {room: "Кабинет", teacher: "Преподаватель", lesson_type: "Тип", group_name: "Группа", notes: "Заметки"};
-  return state.preferences.visible_fields
-    .filter(field => lesson[field])
-    .map(field => `${labels[field]}: ${lesson[field]}`);
+const emptyImportLesson=()=>({weekday:0,subject:"",starts_at:"09:00",ends_at:"10:00",room:"",teacher:"",lesson_type:"",group_name:"",notes:""});
+function importInput(row,field,title,type="text",className=""){const label=element("label",className,title);let input;if(field==="weekday"){input=document.createElement("select");dayNames.forEach((d,i)=>{const o=element("option","",d);o.value=i;input.append(o);});}else{input=document.createElement("input");input.type=type;}input.value=row[field]??"";input.addEventListener("input",()=>row[field]=field==="weekday"?Number(input.value):input.value);label.append(input);return label;}
+function renderImportRows(){const root=document.querySelector("#importRows");root.replaceChildren();state.importRows.forEach((row,index)=>{const card=element("article","import-row");card.append(importInput(row,"weekday","День"),importInput(row,"subject","Предмет","text","subject-field"),importInput(row,"starts_at","Начало","time"),importInput(row,"ends_at","Конец","time"),importInput(row,"room","Кабинет","text","room-field"));const remove=element("button","icon-button danger","×");remove.type="button";remove.title="Удалить строку";remove.setAttribute("aria-label",`Удалить строку ${index+1}`);remove.addEventListener("click",()=>{state.importRows.splice(index,1);renderImportRows();});card.append(remove,importInput(row,"teacher","Преподаватель"),importInput(row,"lesson_type","Тип занятия"),importInput(row,"group_name","Группа"),importInput(row,"notes","Заметки","text","subject-field"));root.append(card);});}
+function openImportDialog(){state.importRows=[];document.querySelector("#importForm").reset();document.querySelector("#importError").textContent="";document.querySelector("#importPreview").hidden=true;document.querySelector("#importDialog").showModal();}
+async function previewImport(event){event.preventDefault();const button=event.currentTarget.querySelector("button"),file=document.querySelector("#scheduleFile").files[0];if(!file)return;button.disabled=true;button.textContent="Распознаю…";document.querySelector("#importError").textContent="";try{const form=new FormData();form.append("file",file);const result=await api("/api/schedule/import/preview",{method:"POST",body:form});state.importRows=result.lessons;renderImportRows();document.querySelector("#importPreview").hidden=false;toast("Черновик готов — проверьте все строки");}catch(error){document.querySelector("#importError").textContent=error.message;}finally{button.disabled=false;button.textContent="Распознать";}}
+async function confirmImport(){const button=document.querySelector("#confirmImport");document.querySelector("#importError").textContent="";if(!state.importRows.length){document.querySelector("#importError").textContent="Добавьте хотя бы одну строку";return;}button.disabled=true;try{const result=await api("/api/schedule/import/confirm",{method:"POST",body:JSON.stringify({lessons:state.importRows})});state.lessons.push(...result.lessons);sortLessons();renderToday();renderSchedule();document.querySelector("#importDialog").close();toast(`Импортировано занятий: ${result.imported}`);}catch(error){document.querySelector("#importError").textContent=error.message;}finally{button.disabled=false;}}
+
+function studyList(title,items){const section=element("section","study-section"),list=element("ol","numbered");section.append(element("h3","",title));items.forEach(x=>list.append(element("li","",x)));section.append(list);return section;}
+function renderStudyResult(result){const root=document.querySelector("#studyResult");root.className="study-result card";root.replaceChildren();const intro=element("section","study-section");intro.append(element("p","eyebrow",result.subject),element("h2","",result.assignment_title),element("p","",result.analysis));const explanation=element("section","study-section");explanation.append(element("h3","","Объяснение"),element("p","",result.explanation));root.append(intro,explanation,studyList("Подход",result.approach),studyList("Как проверить",result.checks));const defense=element("section","study-section defense");defense.append(element("p","eyebrow","Как защитить"),element("blockquote","",result.how_to_defend),studyList("Вопросы преподавателя",result.defense_questions),studyList("Где можно спалиться",result.pitfalls));root.append(defense);const deadline=element("section","study-section");deadline.append(element("h3","","Добавить дедлайн"),element("p","muted","Проверьте данные. Student AI ничего не сохраняет автоматически."));const form=element("form","deadline-box"),title=document.createElement("input"),subject=document.createElement("input"),due=document.createElement("input"),save=element("button","primary wide","Сохранить в календарь");title.value=result.assignment_title;title.maxLength=160;title.required=true;title.setAttribute("aria-label","Название дедлайна");subject.value=result.subject;subject.maxLength=120;subject.setAttribute("aria-label","Предмет");due.type="datetime-local";due.required=true;due.setAttribute("aria-label","Дата дедлайна");if(result.suggested_due_at)due.value=result.suggested_due_at.slice(0,16);save.type="submit";form.append(title,subject,due,save);deadline.append(form);root.append(deadline);form.addEventListener("submit",e=>saveDeadline(e,{title,subject,due,save}));if(result.mode==="demo")toast("Локальный деморежим: добавьте OPENAI_API_KEY для живого AI");}
+async function saveDeadline(event,fields){event.preventDefault();fields.save.disabled=true;try{const saved=await api("/api/deadlines",{method:"POST",body:JSON.stringify({title:fields.title.value,subject:fields.subject.value,due_at:fields.due.value,description:document.querySelector("#assignment").value.slice(0,4000),source:"ai-study"})});if(!state.deadlines.some(x=>x.id===saved.id))state.deadlines.push(saved);state.deadlines.sort((a,b)=>a.due_at.localeCompare(b.due_at));renderToday();renderCalendar();toast("Дедлайн сохранён и появился в календаре");fields.save.textContent="Сохранено ✓";}catch(error){toast(error.message);fields.save.disabled=false;}}
+
+function renderCalendar(){const grid=document.querySelector("#calendarGrid");grid.replaceChildren();shortDays.forEach(d=>grid.append(element("div","weekday",d)));const year=state.calendarDate.getFullYear(),month=state.calendarDate.getMonth();document.querySelector("#calendarMonth").textContent=state.calendarDate.toLocaleDateString("ru",{month:"long",year:"numeric"});const offset=(new Date(year,month,1).getDay()+6)%7,start=new Date(year,month,1-offset),today=localDateKey(new Date());for(let i=0;i<42;i++){const current=new Date(start);current.setDate(start.getDate()+i);const key=localDateKey(current),cell=element("div",`calendar-day${current.getMonth()===month?"":" other"}${key===today?" today":""}`);cell.append(element("span","day-number",current.getDate()));state.deadlines.filter(x=>x.due_at.slice(0,10)===key).forEach(item=>{const event=element("button",`calendar-event${item.completed?" done":""}`,item.title);event.title=`${item.title} · ${parseLocalDate(item.due_at).toLocaleString("ru")}`;event.addEventListener("click",()=>toggleDeadline(item));cell.append(event);});grid.append(cell);}}
+async function toggleDeadline(item){try{Object.assign(item,await api(`/api/deadlines/${item.id}`,{method:"PATCH",body:JSON.stringify({completed:!item.completed})}));renderCalendar();renderToday();toast(item.completed?"Дедлайн отмечен выполненным":"Дедлайн возвращён в работу");}catch(error){toast(error.message);}}
+async function savePreferences(patch){try{state.preferences=await api("/api/preferences",{method:"PUT",body:JSON.stringify({...state.preferences,...patch})});applyTheme();renderSchedule();renderToday();}catch(error){toast(error.message);syncSettingsControls();}}
+function applyTheme(){document.documentElement.dataset.theme=state.preferences.theme;syncSettingsControls();}
+
+function bindEvents(){
+  document.querySelectorAll(".app-nav").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.target)));document.querySelectorAll("[data-jump]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.jump)));
+  document.querySelector("#menuButton").addEventListener("click",openDrawer);document.querySelector("#drawerClose").addEventListener("click",closeDrawer);document.querySelector("#drawerBackdrop").addEventListener("click",closeDrawer);
+  document.querySelector("#sidebarCollapse").addEventListener("click",()=>{const c=document.querySelector("#appShell").classList.toggle("sidebar-collapsed");localStorage.setItem("student-os-sidebar",c?"collapsed":"expanded");});
+  document.querySelector("#themeToggle").addEventListener("click",()=>savePreferences({theme:state.preferences.theme==="light"?"dark":"light"}));document.querySelectorAll("#themeChoice button").forEach(b=>b.addEventListener("click",()=>savePreferences({theme:b.dataset.value})));
+  const viewKey=()=>matchMedia("(max-width: 900px)").matches?"mobile_schedule_view":"schedule_view";document.querySelector("#weekView").addEventListener("click",()=>savePreferences({[viewKey()]:"week"}));document.querySelector("#dayView").addEventListener("click",()=>savePreferences({[viewKey()]:"day"}));document.querySelector("#desktopViewSetting").addEventListener("change",e=>savePreferences({schedule_view:e.target.value}));document.querySelector("#mobileViewSetting").addEventListener("change",e=>savePreferences({mobile_schedule_view:e.target.value}));
+  ["fieldOptions","settingsFieldOptions"].forEach(id=>document.querySelector(`#${id}`).addEventListener("change",e=>{if(!e.target.matches("input"))return;const next=new Set(state.preferences.visible_fields);e.target.checked?next.add(e.target.value):next.delete(e.target.value);savePreferences({visible_fields:[...next]});}));
+  document.querySelector("#addLesson").addEventListener("click",()=>openLessonDialog());document.querySelector("#lessonForm").addEventListener("submit",saveLesson);document.querySelector("#deleteLesson").addEventListener("click",deleteLesson);document.querySelectorAll("[data-close-dialog]").forEach(b=>b.addEventListener("click",()=>document.querySelector(`#${b.dataset.closeDialog}`).close()));document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
+  document.querySelector("#importSchedule").addEventListener("click",openImportDialog);document.querySelector("#settingsImport").addEventListener("click",openImportDialog);document.querySelector("#importForm").addEventListener("submit",previewImport);document.querySelector("#addImportRow").addEventListener("click",()=>{state.importRows.push(emptyImportLesson());renderImportRows();});document.querySelector("#confirmImport").addEventListener("click",confirmImport);
+  document.querySelector("#prevMonth").addEventListener("click",()=>{state.calendarDate.setMonth(state.calendarDate.getMonth()-1);renderCalendar();});document.querySelector("#nextMonth").addEventListener("click",()=>{state.calendarDate.setMonth(state.calendarDate.getMonth()+1);renderCalendar();});
+  const assignment=document.querySelector("#assignment");assignment.addEventListener("input",()=>document.querySelector("#charCount").textContent=`${assignment.value.length.toLocaleString("ru")} / 12 000`);document.querySelector("#studyForm").addEventListener("submit",async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button[type=submit]");b.disabled=true;b.textContent="Разбираю…";try{renderStudyResult(await api("/api/study/analyze",{method:"POST",body:JSON.stringify({assignment:assignment.value,subject:document.querySelector("#studySubject").value,title:document.querySelector("#studyTitle").value})}));}catch(error){toast(error.message);}finally{b.disabled=false;b.textContent="Получить разбор";}});
+  matchMedia("(max-width: 900px)").addEventListener("change",renderSchedule);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
 }
-
-function lessonNode(lesson) {
-  const card = element("article", "lesson-card");
-  card.append(element("div", "lesson-time", `${lesson.starts_at}–${lesson.ends_at}`));
-  card.append(element("h3", "", lesson.subject));
-  lessonDetails(lesson).forEach(value => card.append(element("p", "lesson-detail", value)));
-  return card;
-}
-
-function renderToday() {
-  const now = new Date();
-  const weekday = (now.getDay() + 6) % 7;
-  const today = state.lessons.filter(item => item.weekday === weekday);
-  const container = document.querySelector("#todayLessons");
-  container.replaceChildren();
-  if (!today.length) container.append(element("p", "empty-copy", "Сегодня занятий нет."));
-  today.forEach(lesson => {
-    const row = element("div", "list-item");
-    row.append(element("span", "time-badge", lesson.starts_at));
-    const copy = element("div"); copy.append(element("h3", "", lesson.subject));
-    copy.append(element("p", "muted", lessonDetails(lesson).join(" · ") || `${lesson.starts_at}–${lesson.ends_at}`));
-    row.append(copy); container.append(row);
-  });
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const future = today.find(item => Number(item.ends_at.slice(0,2))*60 + Number(item.ends_at.slice(3)) > minutes);
-  document.querySelector("#nextLessonTitle").textContent = future?.subject || (today.length ? "Занятия на сегодня закончились" : "Свободный день");
-  document.querySelector("#nextLessonMeta").textContent = future ? `${future.starts_at}–${future.ends_at} · ${future.room || "кабинет не указан"}` : "Можно заняться ближайшим дедлайном.";
-
-  const upcoming = document.querySelector("#upcomingDeadlines"); upcoming.replaceChildren();
-  const active = state.deadlines.filter(item => !item.completed).slice(0, 4);
-  if (!active.length) upcoming.append(element("p", "empty-copy", "Нет сохранённых дедлайнов."));
-  active.forEach(deadline => {
-    const row = element("div", "list-item");
-    row.append(element("span", "time-badge", parseLocalDate(deadline.due_at).toLocaleDateString("ru", {day:"2-digit", month:"short"})));
-    const copy = element("div"); copy.append(element("h3", "", deadline.title));
-    copy.append(element("p", "muted", deadline.subject || "Без предмета")); row.append(copy); upcoming.append(row);
-  });
-}
-
-function renderSchedule() {
-  const grid = document.querySelector("#scheduleGrid"); grid.replaceChildren();
-  const todayIndex = (new Date().getDay() + 6) % 7;
-  const mobile = window.matchMedia("(max-width: 900px)").matches;
-  const activeView = mobile ? state.preferences.mobile_schedule_view : state.preferences.schedule_view;
-  const days = activeView === "day" ? [todayIndex] : [0,1,2,3,4];
-  days.forEach(day => {
-    const column = element("section", "day-column");
-    const heading = element("p", "day-heading"); heading.append(element("strong", "", dayNames[day]));
-    heading.append(document.createTextNode(day === todayIndex ? "Сегодня" : "")); column.append(heading);
-    const lessons = state.lessons.filter(item => item.weekday === day);
-    if (!lessons.length) column.append(element("div", "card empty-copy", "Занятий нет"));
-    lessons.forEach(item => column.append(lessonNode(item))); grid.append(column);
-  });
-  document.querySelector("#weekView").classList.toggle("active", activeView === "week");
-  document.querySelector("#dayView").classList.toggle("active", activeView === "day");
-  document.querySelectorAll("#fieldOptions input").forEach(box => box.checked = state.preferences.visible_fields.includes(box.value));
-}
-
-function studyList(title, items) {
-  const section = element("section", "study-section"); section.append(element("h3", "", title));
-  const list = element("ol", "numbered"); items.forEach(item => list.append(element("li", "", item))); section.append(list);
-  return section;
-}
-
-function renderStudyResult(result) {
-  const root = document.querySelector("#studyResult"); root.className = "study-result card"; root.replaceChildren();
-  const intro = element("section", "study-section"); intro.append(element("p", "eyebrow", result.subject));
-  intro.append(element("h2", "", result.assignment_title)); intro.append(element("p", "", result.analysis)); root.append(intro);
-  const explanation = element("section", "study-section"); explanation.append(element("h3", "", "Объяснение"));
-  explanation.append(element("p", "", result.explanation)); root.append(explanation);
-  root.append(studyList("Подход", result.approach), studyList("Как проверить", result.checks));
-  const defense = element("section", "study-section defense"); defense.append(element("p", "eyebrow", "Как защитить"));
-  defense.append(element("blockquote", "", result.how_to_defend));
-  defense.append(studyList("Вопросы преподавателя", result.defense_questions));
-  defense.append(studyList("Где можно спалиться", result.pitfalls)); root.append(defense);
-  const deadline = element("section", "study-section"); deadline.append(element("h3", "", "Добавить дедлайн"));
-    deadline.append(element("p", "muted", "Проверьте предложенные данные. Student AI ничего не сохраняет автоматически."));
-  const form = element("form", "deadline-box"); form.id = "deadlineForm";
-  const title = document.createElement("input"); title.value = result.assignment_title; title.maxLength = 160; title.required = true; title.setAttribute("aria-label", "Название дедлайна");
-  const subject = document.createElement("input"); subject.value = result.subject; subject.maxLength = 120; subject.setAttribute("aria-label", "Предмет");
-  const due = document.createElement("input"); due.type = "datetime-local"; due.required = true; due.setAttribute("aria-label", "Дата дедлайна");
-  if (result.suggested_due_at) due.value = result.suggested_due_at.slice(0,16);
-  const save = element("button", "primary wide", "Сохранить в календарь"); save.type = "submit";
-  form.append(title, subject, due, save); deadline.append(form); root.append(deadline);
-  form.addEventListener("submit", event => saveDeadline(event, {title, subject, due, save}));
-  if (result.mode === "demo") toast("Локальный demo-режим: добавьте OPENAI_API_KEY для живого AI");
-}
-
-async function saveDeadline(event, fields) {
-  event.preventDefault(); fields.save.disabled = true;
-  try {
-    const saved = await api("/api/deadlines", {method:"POST", body: JSON.stringify({
-      title: fields.title.value, subject: fields.subject.value, due_at: fields.due.value,
-      description: document.querySelector("#assignment").value.slice(0, 4000), source:"ai-study",
-    })});
-    state.deadlines.push(saved); state.deadlines.sort((a,b) => a.due_at.localeCompare(b.due_at));
-    renderToday(); renderCalendar(); toast("Дедлайн сохранён и появился в календаре"); fields.save.textContent = "Сохранено ✓";
-  } catch (error) { toast(error.message); fields.save.disabled = false; }
-}
-
-function renderCalendar() {
-  const grid = document.querySelector("#calendarGrid"); grid.replaceChildren();
-  shortDays.forEach(day => grid.append(element("div", "weekday", day)));
-  const year = state.calendarDate.getFullYear(), month = state.calendarDate.getMonth();
-  document.querySelector("#calendarMonth").textContent = state.calendarDate.toLocaleDateString("ru", {month:"long", year:"numeric"});
-  const firstOffset = (new Date(year, month, 1).getDay() + 6) % 7;
-  const start = new Date(year, month, 1 - firstOffset);
-  const todayKey = localDateKey(new Date());
-  for (let i=0; i<42; i++) {
-    const current = new Date(start); current.setDate(start.getDate()+i); const key = localDateKey(current);
-    const cell = element("div", `calendar-day${current.getMonth()===month ? "" : " other"}${key===todayKey ? " today" : ""}`);
-    cell.append(element("span", "day-number", current.getDate()));
-    state.deadlines.filter(item => item.due_at.slice(0,10) === key).forEach(item => {
-      const event = element("button", `calendar-event${item.completed ? " done" : ""}`, item.title);
-      event.title = `${item.title} · ${parseLocalDate(item.due_at).toLocaleString("ru")}`;
-      event.addEventListener("click", () => toggleDeadline(item)); cell.append(event);
-    });
-    grid.append(cell);
-  }
-}
-
-async function toggleDeadline(item) {
-  try {
-    const updated = await api(`/api/deadlines/${item.id}`, {method:"PATCH", body:JSON.stringify({completed:!item.completed})});
-    Object.assign(item, updated); renderCalendar(); renderToday(); toast(item.completed ? "Дедлайн отмечен выполненным" : "Дедлайн возвращён в работу");
-  } catch (error) { toast(error.message); }
-}
-
-async function savePreferences(patch) {
-  const next = {...state.preferences, ...patch};
-  try {
-    state.preferences = await api("/api/preferences", {method:"PUT", body:JSON.stringify(next)});
-    applyTheme(); renderSchedule(); renderToday();
-  } catch (error) { toast(error.message); }
-}
-
-function applyTheme() { document.documentElement.dataset.theme = state.preferences.theme; }
-
-async function init() {
-  document.querySelector("#dateLabel").textContent = new Date().toLocaleDateString("ru", {weekday:"long", day:"numeric", month:"long"});
-  try {
-    const data = await api("/api/bootstrap"); Object.assign(state, data); applyTheme();
-    document.querySelector("#aiMode").textContent = data.ai_mode === "live" ? "Student AI: подключён" : "Student AI: демо-режим";
-    renderToday(); renderSchedule(); renderCalendar();
-  } catch (error) { toast(`Не удалось загрузить Student OS: ${error.message}`); return; }
-
-  document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => navigate(button.dataset.target)));
-  document.querySelectorAll("[data-jump]").forEach(button => button.addEventListener("click", () => navigate(button.dataset.jump)));
-  document.querySelector("#themeToggle").addEventListener("click", () => savePreferences({theme: state.preferences.theme === "light" ? "dark" : "light"}));
-  const schedulePreferenceKey = () => window.matchMedia("(max-width: 900px)").matches ? "mobile_schedule_view" : "schedule_view";
-  document.querySelector("#weekView").addEventListener("click", () => savePreferences({[schedulePreferenceKey()]:"week"}));
-  document.querySelector("#dayView").addEventListener("click", () => savePreferences({[schedulePreferenceKey()]:"day"}));
-  document.querySelector("#fieldOptions").addEventListener("change", () => savePreferences({visible_fields:[...document.querySelectorAll("#fieldOptions input:checked")].map(x=>x.value)}));
-  document.querySelector("#prevMonth").addEventListener("click", () => {state.calendarDate.setMonth(state.calendarDate.getMonth()-1); renderCalendar();});
-  document.querySelector("#nextMonth").addEventListener("click", () => {state.calendarDate.setMonth(state.calendarDate.getMonth()+1); renderCalendar();});
-  const assignment = document.querySelector("#assignment"); assignment.addEventListener("input", () => document.querySelector("#charCount").textContent = `${assignment.value.length.toLocaleString("ru")} / 12 000`);
-  document.querySelector("#studyForm").addEventListener("submit", async event => {
-    event.preventDefault(); const button = event.currentTarget.querySelector("button[type=submit]"); button.disabled = true; button.textContent = "Разбираю…";
-    try {
-      const result = await api("/api/study/analyze", {method:"POST", body:JSON.stringify({assignment:assignment.value, subject:document.querySelector("#studySubject").value, title:document.querySelector("#studyTitle").value})});
-      renderStudyResult(result);
-    } catch (error) { toast(error.message); }
-    finally { button.disabled = false; button.textContent = "Получить разбор"; }
-  });
-  window.matchMedia("(max-width: 900px)").addEventListener("change", renderSchedule);
-  navigate(location.hash.slice(1) || "today");
-}
-
-document.addEventListener("DOMContentLoaded", init);
+async function init(){document.querySelector("#dateLabel").textContent=new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"});buildFieldControls(document.querySelector("#fieldOptions"));buildFieldControls(document.querySelector("#settingsFieldOptions"));if(localStorage.getItem("student-os-sidebar")==="collapsed")document.querySelector("#appShell").classList.add("sidebar-collapsed");try{Object.assign(state,await api("/api/bootstrap"));sortLessons();applyTheme();document.querySelector("#aiMode").textContent=state.ai_mode==="live"?"Student AI: подключён":"Student AI: деморежим";renderToday();renderSchedule();renderCalendar();}catch(error){toast(`Не удалось загрузить Student OS: ${error.message}`);return;}bindEvents();navigate(location.hash.slice(1)||"today");}
+document.addEventListener("DOMContentLoaded",init);

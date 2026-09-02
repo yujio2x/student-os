@@ -8,101 +8,77 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="#today" aria-label="Student OS">
-        <span>Student OS</span>
-      </a>
-      <nav aria-label="Основная навигация">
-        <button class="nav-item active" data-target="today"><span class="nav-icon" aria-hidden="true">⌂</span><span>Сегодня</span></button>
-        <button class="nav-item" data-target="schedule"><span class="nav-icon" aria-hidden="true">▦</span><span>Расписание</span></button>
-        <button class="nav-item" data-target="study"><span class="nav-icon ai-icon" aria-hidden="true">AI</span><span>Student AI</span></button>
-        <button class="nav-item" data-target="calendar"><span class="nav-icon" aria-hidden="true">◫</span><span>Календарь</span></button>
+  <div class="shell" id="appShell">
+    <aside class="sidebar" id="desktopSidebar">
+      <div class="sidebar-heading"><a class="brand" href="#today" aria-label="Student OS"><span>Student OS</span></a><button class="collapse-button" id="sidebarCollapse" aria-label="Свернуть боковое меню" title="Свернуть меню">‹</button></div>
+      <nav class="sidebar-nav" aria-label="Основная навигация">
+        <button class="nav-item app-nav active" data-target="today"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Сегодня</span></button>
+        <button class="nav-item app-nav" data-target="schedule"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Расписание</span></button>
+        <button class="nav-item app-nav" data-target="study"><span class="nav-icon ai-icon" aria-hidden="true">AI</span><span class="nav-label">Student AI</span></button>
+        <button class="nav-item app-nav" data-target="calendar"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Календарь</span></button>
+        <span class="nav-divider" aria-hidden="true"></span>
+        <button class="nav-item app-nav" data-target="contacts"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Контакты</span><span class="soon nav-label">Скоро</span></button>
+        <button class="nav-item app-nav" data-target="library"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">База знаний</span><span class="soon nav-label">Скоро</span></button>
+        <button class="nav-item app-nav" data-target="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Настройки</span></button>
       </nav>
-      <div class="sidebar-foot">
-        <span class="status-dot"></span>
-        <span id="aiMode">AI: проверка…</span>
-      </div>
+      <div class="sidebar-foot"><span class="status-dot"></span><span class="nav-label" id="aiMode">Student AI: проверка…</span></div>
+    </aside>
+
+    <button class="drawer-backdrop" id="drawerBackdrop" aria-label="Закрыть меню" hidden></button>
+    <aside class="mobile-drawer" id="mobileDrawer" aria-hidden="true">
+      <div class="drawer-head"><span class="brand">Student OS</span><button class="icon-button" id="drawerClose" aria-label="Закрыть меню">×</button></div>
+      <nav aria-label="Мобильное боковое меню">
+        <button class="nav-item app-nav active" data-target="today"><span class="nav-icon">⌂</span><span>Сегодня</span></button>
+        <button class="nav-item app-nav" data-target="schedule"><span class="nav-icon">▦</span><span>Расписание</span></button>
+        <button class="nav-item app-nav" data-target="study"><span class="nav-icon ai-icon">AI</span><span>Student AI</span></button>
+        <button class="nav-item app-nav" data-target="calendar"><span class="nav-icon">◫</span><span>Календарь</span></button>
+        <span class="nav-divider"></span>
+        <button class="nav-item app-nav" data-target="contacts"><span class="nav-icon">◎</span><span>Контакты</span><span class="soon">Скоро</span></button>
+        <button class="nav-item app-nav" data-target="library"><span class="nav-icon">▤</span><span>База знаний</span><span class="soon">Скоро</span></button>
+        <button class="nav-item app-nav" data-target="settings"><span class="nav-icon">⚙</span><span>Настройки</span></button>
+      </nav>
     </aside>
 
     <main>
       <header class="topbar">
-        <div>
-          <p class="eyebrow" id="dateLabel"></p>
-          <h1 id="pageTitle">Сегодня</h1>
-        </div>
+        <button class="menu-button" id="menuButton" aria-label="Открыть меню">☰</button>
+        <div class="title-group"><p class="eyebrow" id="dateLabel"></p><h1 id="pageTitle">Сегодня</h1></div>
         <button class="icon-button" id="themeToggle" aria-label="Переключить тему">◐</button>
       </header>
 
       <section id="today" class="page active" aria-labelledby="pageTitle">
-        <div class="hero card">
-          <div>
-            <p class="eyebrow">Следующее занятие</p>
-            <h2 id="nextLessonTitle">Загрузка…</h2>
-            <p id="nextLessonMeta" class="muted"></p>
-          </div>
-          <button class="primary" data-jump="schedule">Открыть расписание</button>
-        </div>
-        <div class="two-columns">
-          <article class="card">
-            <div class="section-head"><h2>Сегодня</h2><button class="text-button" data-jump="schedule">Вся неделя</button></div>
-            <div id="todayLessons" class="stack"></div>
-          </article>
-          <article class="card">
-            <div class="section-head"><h2>Ближайшие дедлайны</h2><button class="text-button" data-jump="calendar">Календарь</button></div>
-            <div id="upcomingDeadlines" class="stack"></div>
-          </article>
-        </div>
+        <div class="hero card"><div><p class="eyebrow">Следующее занятие</p><h2 id="nextLessonTitle">Загрузка…</h2><p id="nextLessonMeta" class="muted"></p></div><button class="primary" data-jump="schedule">Открыть расписание</button></div>
+        <div class="two-columns"><article class="card"><div class="section-head"><h2>Сегодня</h2><button class="text-button" data-jump="schedule">Вся неделя</button></div><div id="todayLessons" class="stack"></div></article><article class="card"><div class="section-head"><h2>Ближайшие дедлайны</h2><button class="text-button" data-jump="calendar">Календарь</button></div><div id="upcomingDeadlines" class="stack"></div></article></div>
       </section>
 
       <section id="schedule" class="page">
-        <div class="toolbar card compact">
-          <div class="segmented" aria-label="Вид расписания">
-            <button id="weekView" class="active">Неделя</button>
-            <button id="dayView">День</button>
-          </div>
-          <details class="field-settings">
-            <summary>Показывать поля</summary>
-            <div id="fieldOptions" class="popover">
-              <label><span>Кабинет</span><input type="checkbox" value="room"></label>
-              <label><span>Преподаватель</span><input type="checkbox" value="teacher"></label>
-              <label><span>Тип занятия</span><input type="checkbox" value="lesson_type"></label>
-              <label><span>Группа</span><input type="checkbox" value="group_name"></label>
-              <label><span>Заметки</span><input type="checkbox" value="notes"></label>
-            </div>
-          </details>
-        </div>
-        <div id="scheduleGrid" class="schedule-grid"></div>
+        <div class="schedule-actions"><div class="segmented" aria-label="Вид расписания"><button id="weekView" class="active">Неделя</button><button id="dayView">День</button></div><div class="action-group"><details class="field-settings"><summary>Поля</summary><div id="fieldOptions" class="popover field-options"></div></details><button class="secondary" id="importSchedule">Импорт</button><button class="primary" id="addLesson">+ Занятие</button></div></div>
+        <p class="schedule-hint muted">Нажмите на занятие, чтобы изменить его.</p><div id="scheduleGrid" class="schedule-grid"></div>
       </section>
 
       <section id="study" class="page">
-        <div class="study-layout">
-          <form id="studyForm" class="card study-form">
-            <p class="eyebrow">Задание → понимание → защита</p>
-            <h2>Разобрать задание</h2>
-            <label>Предмет <input id="studySubject" maxlength="120" placeholder="Например, Алгоритмы"></label>
-            <label>Название <input id="studyTitle" maxlength="160" placeholder="Лабораторная работа №2"></label>
-            <label>Условие <textarea id="assignment" minlength="3" maxlength="12000" required placeholder="Вставьте условие. Если в нём есть дата вида 2026-09-10, Student OS предложит дедлайн."></textarea></label>
-            <div class="form-foot"><span id="charCount" class="muted">0 / 12 000</span><button class="primary" type="submit">Получить разбор</button></div>
-          </form>
-          <div id="studyResult" class="study-result empty-state card">
-            <span class="empty-icon">✦</span>
-            <h2>Здесь появится понятный разбор</h2>
-            <p>С объяснением, проверками и обязательной подготовкой к защите.</p>
-          </div>
-        </div>
+        <div class="study-layout"><form id="studyForm" class="card study-form"><p class="eyebrow">Задание → понимание → защита</p><h2>Разобрать задание</h2><label>Предмет <input id="studySubject" maxlength="120" placeholder="Например, Алгоритмы"></label><label>Название <input id="studyTitle" maxlength="160" placeholder="Лабораторная работа №2"></label><label>Условие <textarea id="assignment" minlength="3" maxlength="12000" required placeholder="Вставьте условие. Если в нём есть дата вида 2026-09-10, Student OS предложит дедлайн."></textarea></label><div class="form-foot"><span id="charCount" class="muted">0 / 12 000</span><button class="primary" type="submit">Получить разбор</button></div></form><div id="studyResult" class="study-result empty-state card"><span class="empty-icon">AI</span><h2>Здесь появится понятный разбор</h2><p>С объяснением, проверками и обязательной подготовкой к защите.</p></div></div>
       </section>
 
-      <section id="calendar" class="page">
-        <div class="calendar-head card compact">
-          <button class="icon-button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
-          <h2 id="calendarMonth"></h2>
-          <button class="icon-button" id="nextMonth" aria-label="Следующий месяц">›</button>
-        </div>
-        <div id="calendarGrid" class="calendar-grid card"></div>
-      </section>
+      <section id="calendar" class="page"><div class="calendar-head card compact"><button class="icon-button" id="prevMonth" aria-label="Предыдущий месяц">‹</button><h2 id="calendarMonth"></h2><button class="icon-button" id="nextMonth" aria-label="Следующий месяц">›</button></div><div id="calendarGrid" class="calendar-grid card"></div></section>
+      <section id="contacts" class="page"><div class="card coming-page"><span class="empty-icon">◎</span><p class="eyebrow">Скоро</p><h2>Контакты</h2><p>Официальные и добровольно предоставленные контакты появятся здесь после отдельной проверки конфиденциальности.</p></div></section>
+      <section id="library" class="page"><div class="card coming-page"><span class="empty-icon">▤</span><p class="eyebrow">Скоро</p><h2>База знаний</h2><p>Проверенные материалы будут организованы по программе, семестру и предмету. Сейчас раздел не имитирует готовую функцию.</p></div></section>
+
+      <section id="settings" class="page"><div class="settings-grid">
+        <article class="card settings-card"><p class="eyebrow">Внешний вид</p><h2>Тема</h2><div class="segmented settings-choice" id="themeChoice"><button data-value="light">Светлая</button><button data-value="dark">Тёмная</button></div></article>
+        <article class="card settings-card"><p class="eyebrow">Расписание</p><h2>Вид по умолчанию</h2><label class="setting-row"><span><strong>На компьютере</strong><small>Сетка недели или выбранный день</small></span><select id="desktopViewSetting"><option value="week">Неделя</option><option value="day">День</option></select></label><label class="setting-row"><span><strong>На телефоне</strong><small>Вертикальный день или вся неделя</small></span><select id="mobileViewSetting"><option value="day">День</option><option value="week">Неделя</option></select></label><h3>Показывать в занятии</h3><div id="settingsFieldOptions" class="settings-fields"></div></article>
+        <article class="card settings-card"><p class="eyebrow">Student AI</p><h2>Telegram и кредиты</h2><div class="status-panel"><span class="status-dot neutral"></span><div><strong>Аккаунт не подключён</strong><p>Вход через Telegram и общий баланс кредитов появятся позже.</p></div><span class="soon">Скоро</span></div></article>
+        <article class="card settings-card"><p class="eyebrow">Данные</p><h2>Управление данными</h2><button class="setting-action" id="settingsImport"><span><strong>Импортировать расписание</strong><small>PDF, PNG или JPG с обязательной проверкой</small></span><span>›</span></button><div class="setting-action disabled"><span><strong>Облачная копия</strong><small>После безопасного входа через Telegram</small></span><span class="soon">Скоро</span></div><div class="setting-action disabled"><span><strong>Экспорт и очистка</strong><small>Появятся вместе с полным управлением пользовательскими данными</small></span><span class="soon">Скоро</span></div></article>
+      </div></section>
     </main>
+
+    <nav class="bottom-nav" aria-label="Ежедневная навигация"><button class="nav-item app-nav active" data-target="today"><span class="nav-icon">⌂</span><span>Сегодня</span></button><button class="nav-item app-nav" data-target="schedule"><span class="nav-icon">▦</span><span>Расписание</span></button><button class="nav-item app-nav" data-target="study"><span class="nav-icon ai-icon">AI</span><span>Student AI</span></button><button class="nav-item app-nav" data-target="calendar"><span class="nav-icon">◫</span><span>Календарь</span></button></nav>
   </div>
+
+  <dialog id="lessonDialog" class="modal"><form id="lessonForm" class="modal-card"><div class="modal-head"><div><p class="eyebrow">Расписание</p><h2 id="lessonDialogTitle">Новое занятие</h2></div><button type="button" class="icon-button" data-close-dialog="lessonDialog" aria-label="Закрыть">×</button></div><input type="hidden" id="lessonId"><div class="form-grid"><label>День<select id="lessonWeekday" required><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></label><label class="wide">Предмет<input id="lessonSubject" required maxlength="120"></label><label>Начало<input id="lessonStart" type="time" required></label><label>Окончание<input id="lessonEnd" type="time" required></label><label>Кабинет<input id="lessonRoom" maxlength="80"></label><label>Преподаватель<input id="lessonTeacher" maxlength="120"></label><label>Тип занятия<input id="lessonType" maxlength="80" placeholder="Лекция, практика…"></label><label>Группа<input id="lessonGroup" maxlength="80"></label><label class="wide">Заметки<textarea id="lessonNotes" maxlength="1000"></textarea></label></div><p class="form-error" id="lessonError" role="alert"></p><div class="modal-actions"><button type="button" class="danger" id="deleteLesson" hidden>Удалить</button><span></span><button type="button" class="secondary" data-close-dialog="lessonDialog">Отмена</button><button class="primary" type="submit">Сохранить</button></div></form></dialog>
+
+  <dialog id="importDialog" class="modal import-modal"><div class="modal-card"><div class="modal-head"><div><p class="eyebrow">Безопасный импорт</p><h2>Импорт расписания</h2></div><button type="button" class="icon-button" data-close-dialog="importDialog" aria-label="Закрыть">×</button></div><form id="importForm" class="upload-box"><label>PDF или изображение<input id="scheduleFile" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required></label><p>До 6 МБ. Файл обрабатывается временно и не сохраняется в проекте.</p><button class="primary" type="submit">Распознать</button></form><p class="form-error" id="importError" role="alert"></p><section id="importPreview" hidden><div class="preview-head"><div><h3>Проверьте каждую строку</h3><p class="muted">Ничего не сохранится до подтверждения.</p></div><button class="secondary" id="addImportRow" type="button">+ Строка</button></div><div id="importRows" class="import-rows"></div><div class="modal-actions"><span></span><button class="secondary" type="button" data-close-dialog="importDialog">Отмена</button><button class="primary" id="confirmImport" type="button">Подтвердить импорт</button></div></section></div></dialog>
+
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/static/app.js" defer></script>
 </body>

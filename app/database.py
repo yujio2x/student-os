@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterator
+
+
+class LessonConflictError(ValueError):
+    pass
 
 
 class Database:
@@ -108,6 +111,128 @@ class Database:
         with self.connection() as db:
             rows = db.execute(
                 "SELECT * FROM lessons WHERE user_id=? ORDER BY weekday, starts_at", (user_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def _lesson_conflict(
+        db: sqlite3.Connection, user_id: str, weekday: int, starts_at: str,
+        ends_at: str, exclude_id: int | None = None,
+    ) -> sqlite3.Row | None:
+        query = (
+            "SELECT * FROM lessons WHERE user_id=? AND weekday=? "
+            "AND starts_at < ? AND ends_at > ?"
+        )
+        params: list[object] = [user_id, weekday, ends_at, starts_at]
+        if exclude_id is not None:
+            query += " AND id<>?"
+            params.append(exclude_id)
+        query += " ORDER BY starts_at LIMIT 1"
+        return db.execute(query, params).fetchone()
+
+    def add_lesson(self, user_id: str, lesson: dict) -> dict:
+        with self.connection() as db:
+            conflict = self._lesson_conflict(
+                db, user_id, lesson["weekday"], lesson["starts_at"], lesson["ends_at"]
+            )
+            if conflict:
+                raise LessonConflictError(
+                    f"Время пересекается с занятием «{conflict['subject']}» "
+                    f"({conflict['starts_at']}–{conflict['ends_at']})"
+                )
+            cursor = db.execute(
+                """INSERT INTO lessons
+                (user_id, weekday, subject, starts_at, ends_at, room, teacher,
+                 lesson_type, group_name, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id, lesson["weekday"], lesson["subject"], lesson["starts_at"],
+                    lesson["ends_at"], lesson["room"], lesson["teacher"],
+                    lesson["lesson_type"], lesson["group_name"], lesson["notes"],
+                ),
+            )
+            row = db.execute("SELECT * FROM lessons WHERE id=?", (cursor.lastrowid,)).fetchone()
+        return dict(row)
+
+    def update_lesson(self, user_id: str, lesson_id: int, lesson: dict) -> dict | None:
+        with self.connection() as db:
+            owned = db.execute(
+                "SELECT 1 FROM lessons WHERE id=? AND user_id=?", (lesson_id, user_id)
+            ).fetchone()
+            if owned is None:
+                return None
+            conflict = self._lesson_conflict(
+                db, user_id, lesson["weekday"], lesson["starts_at"],
+                lesson["ends_at"], exclude_id=lesson_id,
+            )
+            if conflict:
+                raise LessonConflictError(
+                    f"Время пересекается с занятием «{conflict['subject']}» "
+                    f"({conflict['starts_at']}–{conflict['ends_at']})"
+                )
+            db.execute(
+                """UPDATE lessons SET weekday=?, subject=?, starts_at=?, ends_at=?, room=?,
+                teacher=?, lesson_type=?, group_name=?, notes=?
+                WHERE id=? AND user_id=?""",
+                (
+                    lesson["weekday"], lesson["subject"], lesson["starts_at"],
+                    lesson["ends_at"], lesson["room"], lesson["teacher"],
+                    lesson["lesson_type"], lesson["group_name"], lesson["notes"],
+                    lesson_id, user_id,
+                ),
+            )
+            row = db.execute("SELECT * FROM lessons WHERE id=?", (lesson_id,)).fetchone()
+        return dict(row)
+
+    def delete_lesson(self, user_id: str, lesson_id: int) -> bool:
+        with self.connection() as db:
+            cursor = db.execute(
+                "DELETE FROM lessons WHERE id=? AND user_id=?", (lesson_id, user_id)
+            )
+            return cursor.rowcount == 1
+
+    def import_lessons(self, user_id: str, lessons: list[dict]) -> list[dict]:
+        """Import a reviewed preview atomically; never accepts partial persistence."""
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for index, lesson in enumerate(lessons):
+                for previous in lessons[:index]:
+                    if (
+                        previous["weekday"] == lesson["weekday"]
+                        and previous["starts_at"] < lesson["ends_at"]
+                        and previous["ends_at"] > lesson["starts_at"]
+                    ):
+                        raise LessonConflictError(
+                            f"Строки импорта «{previous['subject']}» и «{lesson['subject']}» "
+                            "пересекаются по времени"
+                        )
+                conflict = self._lesson_conflict(
+                    db, user_id, lesson["weekday"], lesson["starts_at"], lesson["ends_at"]
+                )
+                if conflict:
+                    raise LessonConflictError(
+                        f"«{lesson['subject']}» пересекается с существующим занятием "
+                        f"«{conflict['subject']}»"
+                    )
+
+            inserted_ids: list[int] = []
+            for lesson in lessons:
+                cursor = db.execute(
+                    """INSERT INTO lessons
+                    (user_id, weekday, subject, starts_at, ends_at, room, teacher,
+                     lesson_type, group_name, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        user_id, lesson["weekday"], lesson["subject"], lesson["starts_at"],
+                        lesson["ends_at"], lesson["room"], lesson["teacher"],
+                        lesson["lesson_type"], lesson["group_name"], lesson["notes"],
+                    ),
+                )
+                inserted_ids.append(int(cursor.lastrowid))
+            placeholders = ",".join("?" for _ in inserted_ids)
+            rows = db.execute(
+                f"SELECT * FROM lessons WHERE id IN ({placeholders}) ORDER BY weekday, starts_at",
+                inserted_ids,
             ).fetchall()
         return [dict(row) for row in rows]
 

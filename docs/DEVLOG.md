@@ -178,3 +178,56 @@ known limitations: Telegram login, credits adapter, and cloud sync remain docume
 ### Next technical step
 
 Continue with schedule/deadline editing or begin the reviewed Telegram session foundation before any public multi-user staging.
+
+## 2026-09-02 - Schedule Management, Import, Navigation, Settings
+
+### Product result
+
+- Schedule now supports create, edit, and delete on desktop and mobile. Deletion requires an explicit browser confirmation.
+- Every lesson field is editable and persisted: weekday, subject, start/end time, room, teacher, lesson type, group, and notes.
+- Overlapping lessons are rejected with a readable conflict message. Updates exclude their own row from conflict detection.
+- Schedule import is a two-step transaction: temporary recognition and editable preview first, explicit atomic confirmation second. Preview never writes lessons.
+- Preview rows expose every lesson field and allow users to correct, remove, and add rows before confirming.
+- Supported uploads are digital PDF, PNG, JPG, and JPEG up to 6 MB. Extension and file signatures are checked. Empty, oversized, encrypted, malformed, and textless PDFs fail without changing the schedule.
+- Digital PDFs use local text extraction plus a bounded parser when no API key exists. Images use the structured OpenAI vision path when a key exists. Scanned PDF OCR is deliberately deferred; the UI tells the user to export it as PNG/JPG.
+- The old `student-ai-bot` was used only as an architectural reference for Responses API safety patterns. Its code, database, process, and repository were not modified.
+- Desktop gained a persistent collapsible sidebar. Mobile gained a hamburger drawer while retaining the four daily bottom tabs.
+- Added Today, Schedule, Student AI, Calendar, Contacts, Knowledge Base, and Settings navigation destinations. Unfinished destinations are visibly marked `Скоро`.
+- Settings now persist theme, displayed lesson fields, desktop default schedule view, and mobile default schedule view. Telegram, shared credits, cloud backup, export, and clearing remain honest future states.
+- Updated `README.md` in Russian with the current feature and import contracts.
+
+### Implementation boundaries
+
+- `app/database.py`: owned lesson CRUD, overlap checks, and atomic reviewed import.
+- `app/schedule_import.py`: bounded upload validation, digital PDF extraction, fallback parser, and strict structured image/text recognition.
+- `app/main.py`: validated lesson and import models plus CRUD, preview, and confirmation endpoints.
+- `static/index.html`, `static/styles.css`, `static/app.js`: responsive application shell, dialogs, editable import preview, CRUD flow, and settings.
+- `tests/test_schedule_management.py`: persistence, validation, conflict, no-auto-save import, atomicity, malformed upload, size boundary, and Unicode coverage.
+
+### Verification and attack pass
+
+- Automated suite: 23 passed; only the existing Starlette/httpx deprecation warning remains.
+- Python compilation passed. Bundled Node.js syntax validation of `static/app.js` passed.
+- Pytest's default sandbox temp directory became unreadable due to the managed Windows ACL. The identical suite passed outside that sandbox with a dedicated temp path; this is an execution-environment issue, not a product failure.
+- Checked invalid weekday/time order, blank subject, Unicode, overlapping existing rows, overlapping import rows, malformed signatures, encrypted/empty/textless PDF paths, upload size boundary, unsupported extensions, and prompt-shaped document content boundaries.
+- Confirmed preview responses declare `saved: false`; database counts remain unchanged before confirmation; a failed multi-row confirmation writes zero rows.
+- Client renders recognized values through DOM `textContent`/form values and never through `innerHTML`.
+- Browser desktop QA at 1440x1000: sidebar, schedule, complete edit dialog, unchanged update round trip, import dialog, and settings all worked with no console warnings/errors.
+- Browser mobile QA at 390x844: hamburger drawer, bottom navigation, settings, day-first schedule, dialogs, and tap targets fit without horizontal overflow. One checkbox alignment defect found during QA was fixed and rechecked.
+
+### Known limitations
+
+- This remains a single local demo user with no authenticated session boundary.
+- Live paid OpenAI recognition was not exercised because no credential was requested or copied.
+- Scanned PDF OCR, recurring schedules, import deduplication/merge strategies, deadline editing, notifications, Telegram login/credits, and cloud sync remain future work.
+
+### Git checkpoint
+
+Git checkpoint:
+commit: pending
+branch: main
+pushed: pending
+purpose: complete schedule CRUD, reviewed import, responsive application navigation, and persistent settings
+tests: 23 passed; Python compilation and JavaScript syntax checks passed
+attack checks: validation bounds, overlap atomicity, malformed files, no-auto-save, Unicode, XSS rendering boundary, mobile containment
+known limitations: see section above
