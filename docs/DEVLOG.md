@@ -162,6 +162,7 @@ Add schedule/deadline editing and authentication before any public multi-user st
 - Mobile calendar QA at 390px: calendar and header were both 358px wide; each of seven cells was about 50.86px wide with no page overflow.
 - Mobile optional week view rendered all five day columns vertically at the same x-position and width.
 - Browser console contained no Student OS warnings or errors.
+- GitHub Actions completed successfully for the UX feature commit (`15acd44`, 25s) and its checkpoint-record commit (`5edb471`, 21s).
 
 ### Git checkpoint
 
@@ -176,4 +177,4 @@ known limitations: Telegram login, credits adapter, and cloud sync remain docume
 
 ### Next technical step
 
-Verify GitHub Actions for the pushed checkpoint.
+Continue with schedule/deadline editing or begin the reviewed Telegram session foundation before any public multi-user staging.
