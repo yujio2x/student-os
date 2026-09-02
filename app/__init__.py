@@ -1,0 +1,2 @@
+"""Student OS application package."""
+
