@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.ai_service import StudyService
 from app.config import Settings, load_settings
-from app.database import Database, LessonConflictError
+from app.database import Database, DeadlineConflictError, LessonConflictError
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 
 
@@ -49,6 +49,11 @@ class DeadlineCreate(BaseModel):
 
 class CompletionUpdate(BaseModel):
     completed: bool
+
+
+class DeadlineUpdate(DeadlineCreate):
+    completed: bool
+    source: str = Field(default="manual", exclude=True)
 
 
 class PreferencesUpdate(BaseModel):
@@ -211,6 +216,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if result is None:
             raise HTTPException(status_code=404, detail="Deadline not found")
         return result
+
+    @app.put("/api/deadlines/{deadline_id}")
+    def replace_deadline(deadline_id: int, payload: DeadlineUpdate) -> dict:
+        try:
+            result = database.update_deadline(
+                LOCAL_USER, deadline_id, payload.title, payload.subject.strip(),
+                payload.due_at.isoformat(timespec="minutes"), payload.description.strip(),
+                payload.completed,
+            )
+        except DeadlineConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail="Дедлайн не найден")
+        return result
+
+    @app.delete("/api/deadlines/{deadline_id}", status_code=204)
+    def delete_deadline(deadline_id: int) -> Response:
+        if not database.delete_deadline(LOCAL_USER, deadline_id):
+            raise HTTPException(status_code=404, detail="Дедлайн не найден")
+        return Response(status_code=204)
 
     @app.put("/api/preferences")
     def update_preferences(payload: PreferencesUpdate) -> dict:

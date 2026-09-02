@@ -10,6 +10,10 @@ class LessonConflictError(ValueError):
     pass
 
 
+class DeadlineConflictError(ValueError):
+    pass
+
+
 class Database:
     """Small local-first store. All user-owned rows carry a user_id for future auth."""
 
@@ -304,3 +308,30 @@ class Database:
                 return None
             row = db.execute("SELECT * FROM deadlines WHERE id=?", (deadline_id,)).fetchone()
         return dict(row)
+
+    def update_deadline(
+        self, user_id: str, deadline_id: int, title: str, subject: str, due_at: str,
+        description: str, completed: bool,
+    ) -> dict | None:
+        with self.connection() as db:
+            try:
+                cursor = db.execute(
+                    """UPDATE deadlines SET title=?, subject=?, due_at=?, description=?, completed=?
+                    WHERE id=? AND user_id=?""",
+                    (title, subject, due_at, description, int(completed), deadline_id, user_id),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise DeadlineConflictError("Такой дедлайн уже существует") from exc
+            if cursor.rowcount != 1:
+                return None
+            row = db.execute(
+                "SELECT * FROM deadlines WHERE id=? AND user_id=?", (deadline_id, user_id)
+            ).fetchone()
+        return dict(row)
+
+    def delete_deadline(self, user_id: str, deadline_id: int) -> bool:
+        with self.connection() as db:
+            cursor = db.execute(
+                "DELETE FROM deadlines WHERE id=? AND user_id=?", (deadline_id, user_id)
+            )
+            return cursor.rowcount == 1
