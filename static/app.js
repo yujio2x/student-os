@@ -35,7 +35,7 @@ function element(tag, className = "", text = "") {
 function navigate(target) {
   document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === target));
   document.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.target === target));
-  const titles = {today: "Сегодня", schedule: "Расписание", study: "AI Study", calendar: "Календарь"};
+  const titles = {today: "Сегодня", schedule: "Расписание", study: "Student AI", calendar: "Календарь"};
   document.querySelector("#pageTitle").textContent = titles[target];
   window.location.hash = target;
 }
@@ -88,7 +88,9 @@ function renderToday() {
 function renderSchedule() {
   const grid = document.querySelector("#scheduleGrid"); grid.replaceChildren();
   const todayIndex = (new Date().getDay() + 6) % 7;
-  const days = state.preferences.schedule_view === "day" ? [todayIndex] : [0,1,2,3,4];
+  const mobile = window.matchMedia("(max-width: 900px)").matches;
+  const activeView = mobile ? state.preferences.mobile_schedule_view : state.preferences.schedule_view;
+  const days = activeView === "day" ? [todayIndex] : [0,1,2,3,4];
   days.forEach(day => {
     const column = element("section", "day-column");
     const heading = element("p", "day-heading"); heading.append(element("strong", "", dayNames[day]));
@@ -97,8 +99,8 @@ function renderSchedule() {
     if (!lessons.length) column.append(element("div", "card empty-copy", "Занятий нет"));
     lessons.forEach(item => column.append(lessonNode(item))); grid.append(column);
   });
-  document.querySelector("#weekView").classList.toggle("active", state.preferences.schedule_view === "week");
-  document.querySelector("#dayView").classList.toggle("active", state.preferences.schedule_view === "day");
+  document.querySelector("#weekView").classList.toggle("active", activeView === "week");
+  document.querySelector("#dayView").classList.toggle("active", activeView === "day");
   document.querySelectorAll("#fieldOptions input").forEach(box => box.checked = state.preferences.visible_fields.includes(box.value));
 }
 
@@ -120,7 +122,7 @@ function renderStudyResult(result) {
   defense.append(studyList("Вопросы преподавателя", result.defense_questions));
   defense.append(studyList("Где можно спалиться", result.pitfalls)); root.append(defense);
   const deadline = element("section", "study-section"); deadline.append(element("h3", "", "Добавить дедлайн"));
-  deadline.append(element("p", "muted", "Проверьте предложенные данные. AI ничего не сохраняет автоматически."));
+    deadline.append(element("p", "muted", "Проверьте предложенные данные. Student AI ничего не сохраняет автоматически."));
   const form = element("form", "deadline-box"); form.id = "deadlineForm";
   const title = document.createElement("input"); title.value = result.assignment_title; title.maxLength = 160; title.required = true; title.setAttribute("aria-label", "Название дедлайна");
   const subject = document.createElement("input"); subject.value = result.subject; subject.maxLength = 120; subject.setAttribute("aria-label", "Предмет");
@@ -186,15 +188,16 @@ async function init() {
   document.querySelector("#dateLabel").textContent = new Date().toLocaleDateString("ru", {weekday:"long", day:"numeric", month:"long"});
   try {
     const data = await api("/api/bootstrap"); Object.assign(state, data); applyTheme();
-    document.querySelector("#aiMode").textContent = data.ai_mode === "live" ? "AI: подключён" : "AI: demo-режим";
+    document.querySelector("#aiMode").textContent = data.ai_mode === "live" ? "Student AI: подключён" : "Student AI: демо-режим";
     renderToday(); renderSchedule(); renderCalendar();
   } catch (error) { toast(`Не удалось загрузить Student OS: ${error.message}`); return; }
 
   document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => navigate(button.dataset.target)));
   document.querySelectorAll("[data-jump]").forEach(button => button.addEventListener("click", () => navigate(button.dataset.jump)));
   document.querySelector("#themeToggle").addEventListener("click", () => savePreferences({theme: state.preferences.theme === "light" ? "dark" : "light"}));
-  document.querySelector("#weekView").addEventListener("click", () => savePreferences({schedule_view:"week"}));
-  document.querySelector("#dayView").addEventListener("click", () => savePreferences({schedule_view:"day"}));
+  const schedulePreferenceKey = () => window.matchMedia("(max-width: 900px)").matches ? "mobile_schedule_view" : "schedule_view";
+  document.querySelector("#weekView").addEventListener("click", () => savePreferences({[schedulePreferenceKey()]:"week"}));
+  document.querySelector("#dayView").addEventListener("click", () => savePreferences({[schedulePreferenceKey()]:"day"}));
   document.querySelector("#fieldOptions").addEventListener("change", () => savePreferences({visible_fields:[...document.querySelectorAll("#fieldOptions input:checked")].map(x=>x.value)}));
   document.querySelector("#prevMonth").addEventListener("click", () => {state.calendarDate.setMonth(state.calendarDate.getMonth()-1); renderCalendar();});
   document.querySelector("#nextMonth").addEventListener("click", () => {state.calendarDate.setMonth(state.calendarDate.getMonth()+1); renderCalendar();});
@@ -207,6 +210,7 @@ async function init() {
     } catch (error) { toast(error.message); }
     finally { button.disabled = false; button.textContent = "Получить разбор"; }
   });
+  window.matchMedia("(max-width: 900px)").addEventListener("change", renderSchedule);
   navigate(location.hash.slice(1) || "today");
 }
 

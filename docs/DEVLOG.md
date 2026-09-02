@@ -125,3 +125,55 @@ known limitations: see section above
 ### Next technical step
 
 Add schedule/deadline editing and authentication before any public multi-user staging.
+
+## 2026-09-02 - UI/UX refinement sprint
+
+### Product changes
+
+- Renamed all visible `AI Study` labels to `Student AI` while preserving internal route/code names.
+- Removed the temporary `S` avatar from the Student OS wordmark.
+- Replaced the sparkle-like Student AI icon with a neutral outlined `AI` badge that does not imitate another product identity.
+- Translated the remaining visible `Assignment -> understanding -> defense` copy to `Задание -> понимание -> защита` and reviewed the static client for other unintended English UI.
+- Rebuilt schedule-field options as consistent rows with text on the left and checkboxes on the right.
+- Translated the root `README.md` into Russian and updated it to describe the refined mobile behavior honestly.
+
+### Mobile changes
+
+- Increased bottom navigation height to 78px, each tab target to 60px, icon size to 25px, and label size to 12px; active state is more prominent.
+- Replaced the horizontal mobile schedule with a vertical day-first layout.
+- Mobile defaults to today's lessons. Optional week view renders five full-width vertical day sections, suitable for one long screenshot.
+- Desktop and mobile view preferences are now independent: `schedule_view` defaults to `week`, while `mobile_schedule_view` defaults to `day`.
+- Added a safe SQLite migration for existing `preferences` tables missing `mobile_schedule_view`.
+- Reworked the mobile month grid to seven fluid columns inside the viewport. On narrow screens, events become compact accessible dots with their full title retained as the button title.
+
+### Telegram architecture direction
+
+- Added `docs/TELEGRAM_INTEGRATION.md` as the implementation boundary for Telegram login, Student AI-only credits, and future cloud backup.
+- Student OS keeps its own stable user identity; Telegram ID is an external account link rather than the system-wide primary key.
+- Credits are isolated behind a future Student AI entitlement service and do not gate Schedule, Calendar, Deadlines, or organizational features.
+- Existing `user_id` ownership columns are retained as minimal groundwork; production auth/session code is intentionally deferred.
+
+### Verification
+
+- Automated suite: 12 passed, including visible-label and existing-database migration regressions.
+- Python compilation passed.
+- Desktop browser QA confirmed renamed navigation, removed avatar, neutral icon, and aligned checkbox rows.
+- Mobile browser QA at 390x844: body width stayed within viewport, day view was selected, one day column rendered, schedule width was 358px, bottom nav was 78px, and each tap target was 60px.
+- Mobile calendar QA at 390px: calendar and header were both 358px wide; each of seven cells was about 50.86px wide with no page overflow.
+- Mobile optional week view rendered all five day columns vertically at the same x-position and width.
+- Browser console contained no Student OS warnings or errors.
+
+### Checkpoint pending
+
+Git checkpoint:
+commit: pending
+branch: main
+pushed: NO
+purpose: product-directed UI/UX refinement, Russian README, and Telegram integration architecture
+tests: 12 passed; `python -m compileall -q app tests` passed
+attack checks: existing-database migration, viewport containment, separate device preferences, visible-label regression
+known limitations: Telegram login, credits adapter, and cloud sync remain documented architecture, not implemented auth
+
+### Next technical step
+
+Scan staged public content for secrets, commit, push, and verify CI.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.database import Database
 from app.main import create_app
 
 
@@ -24,7 +26,19 @@ def test_bootstrap_has_schedule_preferences_and_empty_calendar(client: TestClien
     assert len(data["lessons"]) == 6
     assert data["deadlines"] == []
     assert data["preferences"]["visible_fields"] == ["room", "teacher", "lesson_type"]
+    assert data["preferences"]["schedule_view"] == "week"
+    assert data["preferences"]["mobile_schedule_view"] == "day"
     assert data["ai_mode"] == "demo"
+
+
+def test_visible_ui_uses_student_ai_and_russian_labels(client: TestClient) -> None:
+    html = client.get("/").text
+
+    assert "Student AI" in html
+    assert "AI Study" not in html
+    assert "Задание → понимание → защита" in html
+    assert "Assignment" not in html
+    assert "brand-mark" not in html
 
 
 def test_assignment_analysis_has_defense_and_does_not_auto_save_deadline(client: TestClient) -> None:
@@ -108,13 +122,46 @@ def test_unicode_and_prompt_injection_stay_inside_response_contract(client: Test
 def test_preferences_reject_unknown_or_duplicate_fields(client: TestClient) -> None:
     unknown = client.put(
         "/api/preferences",
-        json={"theme": "light", "schedule_view": "week", "visible_fields": ["password"]},
+        json={"theme": "light", "schedule_view": "week", "mobile_schedule_view": "day", "visible_fields": ["password"]},
     )
     duplicate = client.put(
         "/api/preferences",
-        json={"theme": "light", "schedule_view": "week", "visible_fields": ["room", "room"]},
+        json={"theme": "light", "schedule_view": "week", "mobile_schedule_view": "day", "visible_fields": ["room", "room"]},
     )
 
     assert unknown.status_code == 422
     assert duplicate.status_code == 422
 
+
+def test_desktop_and_mobile_schedule_views_are_independent(client: TestClient) -> None:
+    response = client.put(
+        "/api/preferences",
+        json={
+            "theme": "dark",
+            "schedule_view": "week",
+            "mobile_schedule_view": "day",
+            "visible_fields": ["room", "lesson_type"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["schedule_view"] == "week"
+    assert response.json()["mobile_schedule_view"] == "day"
+
+
+def test_existing_preferences_database_gets_mobile_view_migration(tmp_path: Path) -> None:
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TABLE preferences (
+            user_id TEXT PRIMARY KEY,
+            theme TEXT NOT NULL DEFAULT 'light',
+            schedule_view TEXT NOT NULL DEFAULT 'week',
+            visible_fields TEXT NOT NULL DEFAULT 'room,teacher,lesson_type')"""
+        )
+        connection.execute("INSERT INTO preferences(user_id) VALUES ('existing-user')")
+
+    database = Database(path)
+    database.initialize()
+
+    assert database.preferences("existing-user")["mobile_schedule_view"] == "day"

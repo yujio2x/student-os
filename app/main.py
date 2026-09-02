@@ -53,6 +53,7 @@ class CompletionUpdate(BaseModel):
 class PreferencesUpdate(BaseModel):
     theme: str = Field(pattern="^(light|dark)$")
     schedule_view: str = Field(pattern="^(week|day)$")
+    mobile_schedule_view: str = Field(pattern="^(week|day)$")
     visible_fields: list[str] = Field(max_length=5)
 
     @field_validator("visible_fields")
@@ -115,7 +116,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.put("/api/preferences")
     def update_preferences(payload: PreferencesUpdate) -> dict:
         return database.update_preferences(
-            LOCAL_USER, payload.theme, payload.schedule_view, payload.visible_fields
+            LOCAL_USER, payload.theme, payload.schedule_view,
+            payload.mobile_schedule_view, payload.visible_fields,
         )
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
@@ -129,4 +131,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 app = create_app()
-

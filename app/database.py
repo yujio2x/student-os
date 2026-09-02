@@ -60,6 +60,8 @@ class Database:
                     user_id TEXT PRIMARY KEY,
                     theme TEXT NOT NULL DEFAULT 'light' CHECK(theme IN ('light', 'dark')),
                     schedule_view TEXT NOT NULL DEFAULT 'week' CHECK(schedule_view IN ('week', 'day')),
+                    mobile_schedule_view TEXT NOT NULL DEFAULT 'day'
+                        CHECK(mobile_schedule_view IN ('week', 'day')),
                     visible_fields TEXT NOT NULL DEFAULT 'room,teacher,lesson_type'
                 );
 
@@ -71,6 +73,13 @@ class Database:
                     ON deadlines(user_id, title, due_at, source);
                 """
             )
+            columns = {
+                str(row["name"]) for row in db.execute("PRAGMA table_info(preferences)").fetchall()
+            }
+            if "mobile_schedule_view" not in columns:
+                db.execute(
+                    "ALTER TABLE preferences ADD COLUMN mobile_schedule_view TEXT NOT NULL DEFAULT 'day'"
+                )
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:
@@ -118,15 +127,19 @@ class Database:
         return result
 
     def update_preferences(
-        self, user_id: str, theme: str, schedule_view: str, visible_fields: list[str]
+        self, user_id: str, theme: str, schedule_view: str,
+        mobile_schedule_view: str, visible_fields: list[str],
     ) -> dict:
         with self.connection() as db:
             db.execute(
-                """INSERT INTO preferences(user_id, theme, schedule_view, visible_fields)
-                VALUES (?, ?, ?, ?)
+                """INSERT INTO preferences
+                (user_id, theme, schedule_view, mobile_schedule_view, visible_fields)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET theme=excluded.theme,
-                schedule_view=excluded.schedule_view, visible_fields=excluded.visible_fields""",
-                (user_id, theme, schedule_view, ",".join(visible_fields)),
+                schedule_view=excluded.schedule_view,
+                mobile_schedule_view=excluded.mobile_schedule_view,
+                visible_fields=excluded.visible_fields""",
+                (user_id, theme, schedule_view, mobile_schedule_view, ",".join(visible_fields)),
             )
         return self.preferences(user_id)
 

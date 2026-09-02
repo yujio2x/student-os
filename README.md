@@ -1,21 +1,23 @@
 # Student OS
 
-Status: **WORKING MVP** (local v0.1 vertical slice)
+Статус: **РАБОЧИЙ MVP** — локальный вертикальный срез v0.1.
 
-Student OS is a web-first student workspace. The v0.1 vertical slice connects a weekly schedule, assignment analysis, a first-class "How to Defend" guide, editable deadlines, and a calendar.
+Student OS — единое веб-пространство для повседневной студенческой жизни. Первый вертикальный срез связывает расписание, разбор задания в Student AI, обязательную подготовку к защите, редактируемые дедлайны и календарь.
 
-## What works
+## Что работает
 
-- responsive Today dashboard with next-class and deadline summaries;
-- week/day schedule with configurable visible fields;
-- light and dark themes persisted in SQLite;
-- text assignment analysis with a structured explanation, checks, and first-class "How to Defend" section;
-- editable AI deadline suggestion that is never auto-saved;
-- calendar display and deadline completion toggle;
-- local deterministic study demo when no API key is configured;
-- critical API/adversarial tests and GitHub Actions CI.
+- адаптивный экран «Сегодня» с ближайшим занятием и дедлайнами;
+- недельное и дневное расписание с настраиваемыми видимыми полями;
+- отдельный режим расписания для мобильного экрана, ориентированный на текущий день;
+- светлая и тёмная темы с сохранением настроек в SQLite;
+- текстовый разбор задания со структурированным объяснением и проверками;
+- полноценный раздел «Как защитить» с вопросами преподавателя и возможными ошибками;
+- редактируемое предложение дедлайна, которое Student AI никогда не сохраняет автоматически;
+- календарь и переключение статуса выполнения дедлайна;
+- локальный детерминированный демо-режим без API-ключа;
+- критические тесты, проверки нестандартных и вредоносных входных данных, а также GitHub Actions CI.
 
-## Run locally
+## Локальный запуск
 
 ```powershell
 py -3.12 -m venv .venv
@@ -23,27 +25,30 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python run.py
 ```
 
-Open `http://127.0.0.1:8000`.
+Откройте `http://127.0.0.1:8000`.
 
-Run tests:
+Запуск тестов:
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests -q
 ```
 
-## Project structure
+## Структура проекта
 
-- `app/` - web API, application/domain services, persistence, and AI integration
-- `static/` - responsive web client
-- `tests/` - critical flow and adversarial checks
-- `docs/DEVLOG.md` - detailed engineering source of truth
+- `app/` — веб-API, прикладная и доменная логика, хранение данных и AI-интеграция;
+- `static/` — адаптивный веб-клиент;
+- `tests/` — проверки критического пользовательского пути и нестандартных сценариев;
+- `docs/DEVLOG.md` — подробный технический источник истины;
+- `docs/TELEGRAM_INTEGRATION.md` — направление интеграции Telegram, кредитов и облачного резервного копирования.
 
-## Configuration
+## Конфигурация
 
-Copy `.env.example` to `.env` locally. Never commit `.env`.
+Локально скопируйте `.env.example` в `.env`. Никогда не добавляйте `.env` в Git.
 
-`OPENAI_API_KEY` is optional for the local deterministic study demo and required for live AI responses. The live integration uses the Responses API with a strict JSON schema and `store=False`.
+`OPENAI_API_KEY` не обязателен для локального демо-режима, но требуется для настоящих ответов Student AI. Рабочая интеграция использует Responses API со строгой JSON Schema и параметром `store=False`.
 
-## Known limitations
+## Известные ограничения
 
-This is a single-user local MVP, not production. Authentication and real user isolation are not implemented. Schedule editing UI, assignment history, file/PDF/image input, recurring schedules, time zones, Directory, Library, payments, Telegram adapter, PWA installability, and native apps remain outside this checkpoint. The live AI path requires the user's own API key and was contract-checked but not billed/tested against the API during this session.
+Это локальный однопользовательский MVP, а не система для промышленной эксплуатации. Аутентификация и реальная изоляция пользователей пока не реализованы. В текущую версию не входят интерфейс редактирования расписания, история заданий, загрузка файлов/PDF/изображений, повторяющиеся события, полноценная работа с часовыми поясами, Directory, Library, платежи, Telegram-адаптер, установка как PWA и нативные приложения.
+
+Рабочий режим Student AI требует собственного API-ключа пользователя. Контракт интеграции проверен локально, но во время разработки не выполнялись платные запросы к API.

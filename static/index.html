@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Student OS - расписание, AI Study и дедлайны в одном рабочем пространстве.">
+  <meta name="description" content="Student OS - расписание, Student AI и дедлайны в одном рабочем пространстве.">
   <title>Student OS</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -11,13 +11,13 @@
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="#today" aria-label="Student OS">
-        <span class="brand-mark">S</span><span>Student OS</span>
+        <span>Student OS</span>
       </a>
       <nav aria-label="Основная навигация">
-        <button class="nav-item active" data-target="today"><span>⌂</span> Сегодня</button>
-        <button class="nav-item" data-target="schedule"><span>▦</span> Расписание</button>
-        <button class="nav-item" data-target="study"><span>✦</span> AI Study</button>
-        <button class="nav-item" data-target="calendar"><span>◫</span> Календарь</button>
+        <button class="nav-item active" data-target="today"><span class="nav-icon" aria-hidden="true">⌂</span><span>Сегодня</span></button>
+        <button class="nav-item" data-target="schedule"><span class="nav-icon" aria-hidden="true">▦</span><span>Расписание</span></button>
+        <button class="nav-item" data-target="study"><span class="nav-icon ai-icon" aria-hidden="true">AI</span><span>Student AI</span></button>
+        <button class="nav-item" data-target="calendar"><span class="nav-icon" aria-hidden="true">◫</span><span>Календарь</span></button>
       </nav>
       <div class="sidebar-foot">
         <span class="status-dot"></span>
@@ -64,11 +64,11 @@
           <details class="field-settings">
             <summary>Показывать поля</summary>
             <div id="fieldOptions" class="popover">
-              <label><input type="checkbox" value="room"> Кабинет</label>
-              <label><input type="checkbox" value="teacher"> Преподаватель</label>
-              <label><input type="checkbox" value="lesson_type"> Тип занятия</label>
-              <label><input type="checkbox" value="group_name"> Группа</label>
-              <label><input type="checkbox" value="notes"> Заметки</label>
+              <label><span>Кабинет</span><input type="checkbox" value="room"></label>
+              <label><span>Преподаватель</span><input type="checkbox" value="teacher"></label>
+              <label><span>Тип занятия</span><input type="checkbox" value="lesson_type"></label>
+              <label><span>Группа</span><input type="checkbox" value="group_name"></label>
+              <label><span>Заметки</span><input type="checkbox" value="notes"></label>
             </div>
           </details>
         </div>
@@ -78,7 +78,7 @@
       <section id="study" class="page">
         <div class="study-layout">
           <form id="studyForm" class="card study-form">
-            <p class="eyebrow">Assignment → понимание → защита</p>
+            <p class="eyebrow">Задание → понимание → защита</p>
             <h2>Разобрать задание</h2>
             <label>Предмет <input id="studySubject" maxlength="120" placeholder="Например, Алгоритмы"></label>
             <label>Название <input id="studyTitle" maxlength="160" placeholder="Лабораторная работа №2"></label>
@@ -107,4 +107,3 @@
   <script src="/static/app.js" defer></script>
 </body>
 </html>
-
