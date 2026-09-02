@@ -184,7 +184,7 @@ Continue with schedule/deadline editing or begin the reviewed Telegram session f
 ### Product result
 
 - Schedule now supports create, edit, and delete on desktop and mobile. Deletion requires an explicit browser confirmation.
-- Every lesson field is editable and persisted: weekday, subject, start/end time, room, teacher, lesson type, group, and notes.
+- Every lesson field is editable and persisted: weekday, subject, start/end time, location, room, teacher, lesson type, group, and notes.
 - Overlapping lessons are rejected with a readable conflict message. Updates exclude their own row from conflict detection.
 - Schedule import is a two-step transaction: temporary recognition and editable preview first, explicit atomic confirmation second. Preview never writes lessons.
 - Preview rows expose every lesson field and allow users to correct, remove, and add rows before confirming.
@@ -230,4 +230,56 @@ pushed: YES
 purpose: complete schedule CRUD, reviewed import, responsive application navigation, and persistent settings
 tests: 23 passed; Python compilation and JavaScript syntax checks passed
 attack checks: validation bounds, overlap atomicity, malformed files, no-auto-save, Unicode, XSS rendering boundary, mobile containment
+known limitations: see section above
+
+## 2026-09-02 - Platonus import accuracy and UI regression cleanup
+
+### Real PDF audit
+
+- Inspected the complete six-page user-provided `Platonus.pdf` as extracted text and rendered A4 pages. The document is a tagged, unencrypted digital PDF with no embedded JavaScript or form fields.
+- Confirmed that a weekday context can span page boundaries, a single time range can be split across physical lines, and the associated lesson text can continue across additional lines.
+- Confirmed real empty slots, repeated consecutive slots, `Л`, `ЛЗ`, `СПЗ`, `СРСП`, academic titles, `Вакансия`, `МООК`, Kazakh/Russian names, campus rooms, and online rooms.
+- The local parser found 23 actual slot-based lessons. Six are `СРСП`; the default preview therefore shows 17 and the explicit toggle shows all 23. No preview was confirmed during QA, so the user's schedule was not changed.
+
+### Parser implementation
+
+- Replaced the line-by-line digital PDF fallback with Platonus-aware grouping: detect weekday, detect a complete time range across line breaks, collect fragments until the next slot/day marker, then parse semantic fields.
+- Empty slot groups are ignored. Consecutive lessons stay as independent rows; no speculative merging was added.
+- Quoted lesson types are parsed generically rather than from a four-value allowlist, so unknown values such as `ПР-2` degrade safely.
+- `subject`, `lesson_type`, `teacher`, `location`, and `room` are separated. Parenthesized academic titles, `Вакансия`, and `МООК` stay in `teacher`; campus/online location stays separate from the room.
+- Added a bounded `location` field to the structured OpenAI contract, validated API model, SQLite schema, CRUD/import SQL, edit dialog, lesson display, and editable preview.
+- Added a safe SQLite migration that gives existing lesson tables an empty `location` column without rewriting existing rows.
+- Strengthened AI import instructions so image recognition follows the same semantic boundaries and continues treating document text as untrusted data.
+
+### Preview and layout fixes
+
+- Preserved the existing upload -> editable preview -> explicit confirm flow and its conflict/no-auto-save messaging.
+- Preview keeps all recognized rows in memory, excludes exact normalized type `СРСП` by default, shows the excluded count, and restores those rows through `Импортировать СРСП`. Confirmation sends only the currently included rows.
+- Rebuilt `Поля` rows as a fixed flex contract: equal width/height, label left, checkbox right. Desktop geometry was 180x36 for every row with aligned 17x17 controls.
+- Fixed the mobile popover anchor after QA found that the desktop `right: 0` rule clipped labels off-screen. Mobile now anchors from the left and stays within the viewport.
+- Rebuilt desktop Settings as two independent compact card columns, removing the grid-row whitespace between appearance and Student AI without adding placeholder settings. Mobile uses one ordered column.
+
+### Tests and attack pass
+
+- Added synthetic Platonus-format fixtures based on the real structure without copying the complete personal timetable into the repository.
+- Regression coverage includes multiline grouping, subject/type/teacher separation, academic title, campus/room, online room, Unicode, `Вакансия`, `МООК`, unknown type, empty slots, consecutive slots, default СРСП exclusion contract, persistence, and old-database migration.
+- Full suite: 29 passed. Python compilation and bundled Node.js syntax validation passed.
+- Attack checks cover malformed/oversized files from the existing suite, 50,000-character PDF text bound, untrusted-document AI instructions, exact type filtering, empty/noise groups, footer removal, no speculative field guessing, atomic confirm, parameterized SQL, and DOM text/form rendering boundaries.
+- Browser QA: real PDF preview 17 -> 23 through the toggle; desktop at 1440x1000; mobile at 390x844; zero console errors/warnings. Preview was closed without confirmation.
+
+### Known limitations
+
+- The parser targets the stable current Platonus exported-text grammar. A future radically different Platonus layout may need an additional parser variant.
+- Scanned PDFs still require PNG/JPG conversion and an `OPENAI_API_KEY`; no local OCR dependency was added.
+- Teacher strings preserve extracted academic titles as requested; typography inside initials/titles is normalized conservatively rather than guessed.
+
+### Git checkpoint
+
+Git checkpoint:
+commit: pending
+branch: main
+pushed: pending
+purpose: accurate Platonus PDF grouping, default СРСП filtering, checkbox regression fix, and compact desktop Settings
+tests: 29 passed; Python compilation and JavaScript syntax checks passed
+attack checks: multiline/noise grouping, empty slots, unknown types, Unicode, file bounds, no-auto-save, atomic import, migration, desktop/mobile containment
 known limitations: see section above

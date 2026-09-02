@@ -24,6 +24,7 @@ def lesson_payload(**overrides) -> dict:
         "starts_at": "09:00",
         "ends_at": "10:20",
         "room": "D-101",
+        "location": "Главный корпус",
         "teacher": "Ж. Өмірбек",
         "lesson_type": "Практика",
         "group_name": "SE-24",
@@ -39,13 +40,15 @@ def test_create_edit_delete_lesson_and_persist(client: TestClient) -> None:
     lesson_id = created.json()["id"]
 
     edited_payload = lesson_payload(
-        weekday=6, starts_at="12:00", ends_at="13:30", room="Онлайн", notes="Новая заметка"
+        weekday=6, starts_at="12:00", ends_at="13:30", location="онлайн",
+        room="online 1", notes="Новая заметка"
     )
     edited = client.put(f"/api/lessons/{lesson_id}", json=edited_payload)
 
     assert edited.status_code == 200
     assert edited.json()["weekday"] == 6
-    assert edited.json()["room"] == "Онлайн"
+    assert edited.json()["location"] == "онлайн"
+    assert edited.json()["room"] == "online 1"
     assert edited.json()["notes"] == "Новая заметка"
     assert any(item["id"] == lesson_id for item in client.get("/api/bootstrap").json()["lessons"])
 
@@ -93,6 +96,7 @@ def test_import_preview_never_saves_and_confirm_is_explicit(client: TestClient) 
 
     assert preview.status_code == 200
     assert preview.json()["saved"] is False
+    assert preview.json()["default_excluded_types"] == ["СРСП"]
     assert len(client.get("/api/bootstrap").json()["lessons"]) == before
 
     confirmed = client.post(
@@ -141,6 +145,7 @@ def test_digital_pdf_fallback_parser_handles_unicode() -> None:
         "starts_at": "08:30",
         "ends_at": "09:50",
         "room": "A-12",
+        "location": "",
         "teacher": "А. Қасым",
         "lesson_type": "Практика",
         "group_name": "",

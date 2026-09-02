@@ -45,6 +45,7 @@ def test_visible_ui_uses_student_ai_and_russian_labels(client: TestClient) -> No
     assert "Настройки" in html
     assert 'id="lessonDialog"' in html
     assert 'id="importDialog"' in html
+    assert "Импортировать СРСП" in html
     assert "privacy review" not in html
     assert "credits" not in html
     assert "обязательным preview" not in html

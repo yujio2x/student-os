@@ -71,6 +71,7 @@ class LessonInput(BaseModel):
     starts_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     ends_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     room: str = Field(default="", max_length=80)
+    location: str = Field(default="", max_length=120)
     teacher: str = Field(default="", max_length=120)
     lesson_type: str = Field(default="", max_length=80)
     group_name: str = Field(default="", max_length=80)
@@ -83,7 +84,7 @@ class LessonInput(BaseModel):
             raise ValueError("subject must contain visible text")
         return value.strip()
 
-    @field_validator("room", "teacher", "lesson_type", "group_name", "notes")
+    @field_validator("room", "location", "teacher", "lesson_type", "group_name", "notes")
     @classmethod
     def trim_optional_fields(cls, value: str) -> str:
         return value.strip()
@@ -183,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "lessons": lessons,
             "source": file.filename,
             "saved": False,
+            "default_excluded_types": ["СРСП"],
             "notice": "Проверьте и исправьте все строки перед подтверждением",
         }
 

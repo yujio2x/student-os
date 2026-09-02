@@ -40,6 +40,7 @@ class Database:
                     starts_at TEXT NOT NULL,
                     ends_at TEXT NOT NULL,
                     room TEXT NOT NULL DEFAULT '',
+                    location TEXT NOT NULL DEFAULT '',
                     teacher TEXT NOT NULL DEFAULT '',
                     lesson_type TEXT NOT NULL DEFAULT '',
                     group_name TEXT NOT NULL DEFAULT '',
@@ -83,6 +84,13 @@ class Database:
                 db.execute(
                     "ALTER TABLE preferences ADD COLUMN mobile_schedule_view TEXT NOT NULL DEFAULT 'day'"
                 )
+            lesson_columns = {
+                str(row["name"]) for row in db.execute("PRAGMA table_info(lessons)").fetchall()
+            }
+            if "location" not in lesson_columns:
+                db.execute(
+                    "ALTER TABLE lessons ADD COLUMN location TEXT NOT NULL DEFAULT ''"
+                )
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:
@@ -92,17 +100,17 @@ class Database:
             if existing:
                 return
             lessons = [
-                (0, "Алгоритмы", "09:00", "10:20", "B-204", "А. Иманов", "Лекция"),
-                (0, "Английский язык", "11:00", "12:20", "A-113", "Д. Ким", "Практика"),
-                (1, "Базы данных", "10:00", "11:20", "C-310", "М. Садыкова", "Лабораторная"),
-                (2, "Математика", "09:30", "10:50", "B-118", "Р. Алиев", "Практика"),
-                (3, "Алгоритмы", "13:00", "14:20", "B-204", "А. Иманов", "Практика"),
-                (4, "Проектирование", "11:00", "12:20", "D-402", "Е. Пак", "Лекция"),
+                (0, "Алгоритмы", "09:00", "10:20", "B-204", "", "А. Иманов", "Лекция"),
+                (0, "Английский язык", "11:00", "12:20", "A-113", "", "Д. Ким", "Практика"),
+                (1, "Базы данных", "10:00", "11:20", "C-310", "", "М. Садыкова", "Лабораторная"),
+                (2, "Математика", "09:30", "10:50", "B-118", "", "Р. Алиев", "Практика"),
+                (3, "Алгоритмы", "13:00", "14:20", "B-204", "", "А. Иманов", "Практика"),
+                (4, "Проектирование", "11:00", "12:20", "D-402", "", "Е. Пак", "Лекция"),
             ]
             db.executemany(
                 """INSERT INTO lessons
-                (user_id, weekday, subject, starts_at, ends_at, room, teacher, lesson_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, weekday, subject, starts_at, ends_at, room, location, teacher, lesson_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [(user_id, *lesson) for lesson in lessons],
             )
             db.execute("INSERT OR IGNORE INTO preferences(user_id) VALUES (?)", (user_id,))
@@ -142,12 +150,12 @@ class Database:
                 )
             cursor = db.execute(
                 """INSERT INTO lessons
-                (user_id, weekday, subject, starts_at, ends_at, room, teacher,
+                (user_id, weekday, subject, starts_at, ends_at, room, location, teacher,
                  lesson_type, group_name, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     user_id, lesson["weekday"], lesson["subject"], lesson["starts_at"],
-                    lesson["ends_at"], lesson["room"], lesson["teacher"],
+                    lesson["ends_at"], lesson["room"], lesson["location"], lesson["teacher"],
                     lesson["lesson_type"], lesson["group_name"], lesson["notes"],
                 ),
             )
@@ -172,11 +180,11 @@ class Database:
                 )
             db.execute(
                 """UPDATE lessons SET weekday=?, subject=?, starts_at=?, ends_at=?, room=?,
-                teacher=?, lesson_type=?, group_name=?, notes=?
+                location=?, teacher=?, lesson_type=?, group_name=?, notes=?
                 WHERE id=? AND user_id=?""",
                 (
                     lesson["weekday"], lesson["subject"], lesson["starts_at"],
-                    lesson["ends_at"], lesson["room"], lesson["teacher"],
+                    lesson["ends_at"], lesson["room"], lesson["location"], lesson["teacher"],
                     lesson["lesson_type"], lesson["group_name"], lesson["notes"],
                     lesson_id, user_id,
                 ),
@@ -219,12 +227,12 @@ class Database:
             for lesson in lessons:
                 cursor = db.execute(
                     """INSERT INTO lessons
-                    (user_id, weekday, subject, starts_at, ends_at, room, teacher,
+                    (user_id, weekday, subject, starts_at, ends_at, room, location, teacher,
                      lesson_type, group_name, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         user_id, lesson["weekday"], lesson["subject"], lesson["starts_at"],
-                        lesson["ends_at"], lesson["room"], lesson["teacher"],
+                        lesson["ends_at"], lesson["room"], lesson["location"], lesson["teacher"],
                         lesson["lesson_type"], lesson["group_name"], lesson["notes"],
                     ),
                 )
