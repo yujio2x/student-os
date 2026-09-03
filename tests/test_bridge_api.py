@@ -68,7 +68,8 @@ def telegram(telegram_user_id: int = 8240001) -> dict:
     }
 
 
-def signed_request(payload: dict, *, secret: str = SECRET, timestamp: int | None = None):
+def signed_request(payload: dict, *, secret: str = SECRET, timestamp: int | None = None,
+                   path: str = "/api/internal/v1/identity/resolve"):
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
     created = int(time.time()) if timestamp is None else timestamp
     nonce = secrets.token_urlsafe(18)
@@ -77,13 +78,13 @@ def signed_request(payload: dict, *, secret: str = SECRET, timestamp: int | None
         "X-Bridge-Timestamp": str(created),
         "X-Bridge-Nonce": nonce,
         "X-Bridge-Signature": BridgeAuthenticator.signature(
-            secret, created, nonce, body
+            secret, created, nonce, body, path
         ),
     }
 
 
 def bridge_post(client: TestClient, path: str, payload: dict):
-    body, headers = signed_request(payload)
+    body, headers = signed_request(payload, path=path)
     return client.post(path, content=body, headers=headers)
 
 
@@ -192,3 +193,38 @@ def test_unconfigured_bridge_fails_closed(tmp_path: Path) -> None:
             "/api/internal/v1/identity/resolve", content=body, headers=headers
         )
         assert response.status_code == 503
+
+
+def test_signature_is_endpoint_bound_and_body_limit_precedes_json_parsing(tmp_path):
+    app = bridge_app(tmp_path / "attack.db")
+    with TestClient(app) as client:
+        body, headers = signed_request({"telegram": telegram()})
+        assert client.post("/api/internal/v1/entitlement", content=body, headers=headers).status_code == 401
+        assert client.post("/api/internal/v1/identity/resolve", content=body, headers=headers).status_code == 200
+        assert client.post("/api/internal/v1/products", content=b"x" * 65537).status_code == 413
+        for key, value in (("X-Bridge-Timestamp", "9" * 5000),
+                           ("X-Bridge-Signature", "z" * 64)):
+            invalid = {**headers, key: value}
+            assert client.post("/api/internal/v1/identity/resolve", content=body, headers=invalid).status_code == 401
+
+
+def test_auth_rejects_non_ascii_header_and_rate_limit(tmp_path):
+    from app.bridge_auth import BridgeAuthError, BridgeRateLimitError
+    import pytest
+    app = bridge_app(tmp_path / "headers.db")
+    with TestClient(app):
+        auth = BridgeAuthenticator(app.state.database, SECRET, max_requests_per_minute=1)
+        now = int(time.time())
+        for timestamp, nonce, signature in (("١٢٣", "a" * 20, "a" * 64),
+                                              (str(now), "ә" * 20, "a" * 64),
+                                              (str(now), "a" * 20, "ә" * 64)):
+            with pytest.raises(BridgeAuthError):
+                auth.verify(timestamp, nonce, signature, b"{}")
+        for number in range(2):
+            nonce = f"rate-test-nonce-{number:04}"
+            signature = auth.signature(SECRET, now, nonce, b"{}")
+            if number == 0:
+                auth.verify(str(now), nonce, signature, b"{}")
+            else:
+                with pytest.raises(BridgeRateLimitError):
+                    auth.verify(str(now), nonce, signature, b"{}")

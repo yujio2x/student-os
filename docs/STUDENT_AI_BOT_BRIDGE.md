@@ -23,10 +23,10 @@ Requests carry only Telegram external identity and operation data. Core never ac
 `BOT_BRIDGE_SECRET` signs the exact body with HMAC-SHA-256 over:
 
 ```text
-<unix timestamp>.<unique nonce>.<exact request body>
+v2.POST.<endpoint path>.<unix timestamp>.<unique nonce>.<exact request body>
 ```
 
-Headers are `X-Bridge-Timestamp`, `X-Bridge-Nonce`, and `X-Bridge-Signature`. Core uses constant-time comparison, a five-minute default freshness window, durable nonce replay rejection, a 64 KiB body limit, and a basic per-process rate ceiling. Browser cookies and CSRF are not accepted as bridge credentials. The bridge returns 503 when its secret is absent.
+Headers are `X-Bridge-Timestamp`, `X-Bridge-Nonce`, and `X-Bridge-Signature`. Core uses constant-time comparison, a five-minute default freshness window, durable nonce replay rejection, a 64 KiB body limit before JSON parsing, and a basic per-process rate ceiling. Browser cookies and CSRF are not accepted as bridge credentials. The bridge returns 503 when its secret is absent. Old unbound signatures are rejected; deploy matching Core/bot revisions before manual cutover.
 
 ## Failure and idempotency
 

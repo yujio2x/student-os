@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.ai_service import StudyService
 from app.auth import SESSION_COOKIE, SessionService
-from app.bridge_auth import BridgeAuthError, BridgeAuthenticator, BridgeRateLimitError
+from app.bridge_auth import BridgeAuthError, BridgeAuthenticator, BridgeRateLimitError, BridgeBodyLimitMiddleware
 from app.config import Settings, load_settings
 from app.database import (
     AdminActionConflict, Database, DeadlineConflictError, ExternalIdentityConflict,
@@ -232,6 +232,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(BridgeBodyLimitMiddleware)
     app.state.database = database
     app.state.study = study
     app.state.schedule_import = schedule_import
@@ -281,7 +282,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request.headers.get("X-Bridge-Timestamp", ""),
                 request.headers.get("X-Bridge-Nonce", ""),
                 request.headers.get("X-Bridge-Signature", ""),
-                await request.body(),
+                await request.body(), request.url.path,
             )
         except BridgeRateLimitError as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc

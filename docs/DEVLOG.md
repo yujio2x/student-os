@@ -728,3 +728,19 @@ Rollback: flag OFF plus explicitly authorized restart restores legacy behavior; 
 pending outbox and reconcile paid records before retiring Core. No live restart, bridge
 enablement, legacy DB modification or production deployment was performed.
 Next: harden bridge security/operational edge cases, then continue the prioritized brief.
+
+### Bridge security follow-up
+
+Core integration checkpoint `c3a0092` was pushed. Attack review found that the original
+signature did not bind the endpoint and body size was checked after JSON ingestion.
+Protocol v2 now signs method/path + timestamp/nonce/body; old signatures fail closed.
+An ASGI boundary caps bridge bodies before FastAPI parsing. Header syntax/length is
+validated before integer conversion/constant-time compare, avoiding malformed-header 500s.
+No live client uses this protocol yet; both repositories must be deployed together.
+
+Tests: 11 focused bridge/integration tests passed; bot 70 passed. Added endpoint-swap,
+oversized invalid JSON, oversized timestamp, non-ASCII headers and rate-limit tests.
+Bot commit `2fbcc37` pushed; Core CI pins that compatible transport revision.
+No Web UI change; browser QA not applicable. Secrets scan and diff checks pass.
+Rollback is still flag OFF; no production runtime or database was touched.
+Next: operational account/admin review and production Telegram UI foundation.
