@@ -529,3 +529,79 @@ External blockers/manual steps: configure Telegram production credentials/domain
 Deliberately omitted: production deploy, paid resources, live bot database writes, cloud sync/restore, payments, offline sync, Contacts, Knowledge Base, OCR, native apps, recurring calendar, and redesign.
 
 Next: stop at this stable foundation. The next scope should start from production Telegram UI/account recovery plus a reviewed entitlement adapter and staging deployment, not from additional unrelated features.
+
+## 2026-09-03 - Product polish and Student AI integration preparation
+
+Goal: fix local admin access, make the Student AI account/credit boundary honest, improve mobile Calendar and product identity, then begin a safe shared-engine integration without touching the live Telegram bot or ledger.
+
+Starting HEAD: `fcf9d0b8b6b473c4781cc27dc8734dbe0a94a8c6` on clean synchronized `main`; GitHub Actions was green.
+
+Audit:
+
+- Confirmed `/admin` correctly denied the ordinary development user but had no explicit local owner path.
+- Confirmed the Student AI form called the engine without checking Telegram identity or entitlement state.
+- Confirmed the smallest mobile breakpoint reduced deadlines to 7 px dots and had no multiple-event overflow policy.
+- Confirmed the green E-shaped favicon was unrelated to the black/purple Student OS UI.
+- Re-audited `C:\student-ai-bot` read-only at `5a9ce776a6e60a3879f51263443d9c89c115f7c1`: bounded Responses continuation, text/photo flows, 24-hour recognized-photo context, token/cost accounting, trial/paid/unlimited access, explicit restore on failure, defense follow-up, and relevant tests. Its pre-existing dirty files remained untouched.
+
+P0 - local admin access:
+
+- Added `DEV_ADMIN_ENABLED`, default false. It promotes only the stable server-selected development user and only when `APP_ENV=development` plus `DEV_LOGIN_ENABLED=true` are also active.
+- Development login resets the local user's role to ordinary user when the flag is off, preventing a previous local admin session from silently preserving access.
+- Production ignores dev-admin configuration and additionally requires an admin-role session to have a verified Telegram identity equal to `ADMIN_TELEGRAM_ID`.
+- Regression tests prove an erroneously enabled development login/admin pair cannot open the page or API in production, even with a manually created admin-role user lacking the verified owner identity.
+
+P1/P2 - Student AI gate and web preparation:
+
+- Student AI stays visible to every authenticated Student OS user. Its left pane now shows account/entitlement status and an honest disabled future photo/file boundary; the structured right pane retains understanding, solution, approach, checks, `Как защитить`, teacher questions, pitfalls, feedback, and deadline confirmation.
+- Without a Telegram identity, both browser and backend stop before entitlement lookup, reservation, or engine execution. The modal explains that Telegram is required only for Student AI and links to account Settings.
+- A linked identity proceeds to entitlement validation. `local-unconnected` returns an honest beta state without a fake balance or engine call.
+- A connected source performs reserve → engine → token-accounted commit. Failure releases the reservation; reusing a request ID is rejected before a second engine invocation.
+- Bootstrap no longer creates entitlement rows for unlinked users. Schedule, Today, Calendar, Deadlines, Settings, and export remain independent of Telegram and credits.
+
+P3/P4 - Calendar and icon polish:
+
+- Mobile Calendar now stacks up to two full-width subject/title pills per day and displays `+N` for additional deadlines. Text truncates inside the grid; the entire pill opens the existing deadline dialog.
+- Desktop Calendar styling and interaction remain unchanged.
+- Replaced the unrelated green letter with a neutral black/purple abstract Student OS panel mark aligned to the existing UI system.
+- Added SVG favicon, maskable PNG fallbacks at 192×192 and 512×512, Apple touch metadata, updated manifest colors, and service-worker cache version/assets.
+
+P5 - shared Student AI engine preparation:
+
+- Ported the old bot's bounded continuation principle into the structured web engine: only `max_output_tokens` truncation continues, at most four Responses calls, with every call retaining `store=False` and strict JSON Schema.
+- Because web output is one structured object, a continuation regenerates one complete valid JSON object from accumulated response context instead of concatenating Telegram-style Markdown fragments.
+- Subject/title are now explicit engine context rather than fallback-only UI fields. Input/output token totals across continuations are persisted on the committed reservation and bounded before storage.
+- Analytics writes became best-effort so an optional event failure cannot turn an already committed successful answer into a user-visible AI failure.
+- Added `docs/STUDENT_AI_ARCHITECTURE.md`: exact old bot → reusable domain → Telegram/web mapping, photo compatibility fixtures, single-writer ledger migration, staged rollout, rollback, and manual prerequisites.
+
+Tests: 69 passed; Python compilation, application/admin/service-worker JavaScript syntax, and diff checks passed. CI is green for P0-P4 commit `45c5acb` and P5 commit `cb49ecc`.
+
+Attack checks:
+
+- Local admin flag absent/off, ordinary-user admin denial, production dev-admin misconfiguration, role-only production escalation, missing admin CSRF, and verified Telegram owner path.
+- Unlinked Student AI request creates no entitlement/reservation and makes zero engine calls; linked-unconnected makes zero engine calls; connected request commits once; duplicate request does not rerun; failure refunds.
+- Legacy reservation schema migration, token aggregation across continuation, hard four-call limit, strict structured output, `store=False`, malformed/oversized input, Unicode, and existing auth/Telegram/ownership/credit concurrency suites.
+- PWA never caches API/admin responses; SVG/PNG signatures and manifest sizes are checked.
+
+Browser QA:
+
+- Desktop 1440×1000: development admin opened the real control center and loaded overview/users/feedback/audit APIs.
+- Student AI without Telegram displayed the gate while leaving form and organizational navigation available.
+- Mobile 390×844: three deadlines on one date rendered two truncated horizontal pills plus `+1`, pill tap opened edit dialog, and document width stayed below viewport width.
+- Browser loaded the new favicon, manifest, Apple touch icon, and both PNG manifest icons.
+
+Git checkpoints:
+
+- `45c5acb` - `Polish beta access and Student AI gate` - pushed, CI green.
+- `cb49ecc` - `Prepare shared Student AI engine integration` - pushed, CI green.
+
+Known limitations/blockers:
+
+- The Telegram connection CTA currently leads to the honest account Settings state; live OIDC/widget UI still requires production client/bot credentials and allowed domain/redirect setup.
+- `ENTITLEMENT_SOURCE=local` remains staging-only. A staging ledger copy, authenticated single-writer adapter, reconciliation, and migration approval are required before live balances can be enforced.
+- Photo upload remains disabled until MIME/signature/dimension limits, explicit quoted credit cost, 24-hour recognized-text storage, repeat-confirmation safety, and device QA are implemented.
+- Completed request replay currently returns conflict instead of a cached answer. A shared service may add encrypted/retention-bounded response replay later.
+
+Deliberately omitted: live bot or database changes, Telegram handler imports, production deployment, Contacts, Knowledge Base, OCR, cloud sync, offline user data, payments, recurring calendar, and redesign.
+
+Next: implement the production Telegram connection UI and a staging-only authoritative entitlement adapter, then exercise the sanitized text/photo compatibility fixtures before any live migration.
