@@ -744,3 +744,34 @@ Bot commit `2fbcc37` pushed; Core CI pins that compatible transport revision.
 No Web UI change; browser QA not applicable. Secrets scan and diff checks pass.
 Rollback is still flag OFF; no production runtime or database was touched.
 Next: operational account/admin review and production Telegram UI foundation.
+
+## 2026-09-04 — Telegram account/login foundation
+
+Goal: finish an actual production login UI boundary without using live credentials.
+Starting HEAD: Core `78e154a`, bot `2fbcc37`; both CI GREEN.
+Architecture: Telegram documented OIDC Authorization Code + PKCE, RS256-only JWT
+verification via PyJWT/cryptography. Existing internal UUID/session/link policy retained.
+
+Implementation: five-minute single-use browser-bound state, PKCE verifier, bounded
+pending attempts and token response; fixed Telegram token/JWKS endpoints; HTTPS registered
+callback configuration; constant-time session/browser binding; token issuer/audience/
+expiry/issued-at/Telegram-id validation. Login rotates session; authenticated linking
+requires CSRF and rejects existing-account conflicts without implicit merge or data loss.
+Logout confirmation, honest missing-configuration state, Settings balance/purchase/refresh,
+production login screen and safe callback notices. No phone or bot-write scope requested.
+Raw tokens not stored; callback no-store/no-referrer; Uvicorn access logs disabled to avoid
+authorization-code logging. Reverse proxy redaction remains an operator requirement.
+
+Tests: eight focused OIDC/legacy auth tests passed, including real generated RSA signature,
+forgery, wrong issuer/audience, stale/expired, invalid id, state-cookie mismatch, replay,
+CSRF, account conflict, owner promotion and logout. No live Telegram/paid calls.
+Browser: actual local port 8001, isolated `data/account-qa.db`; desktop 1440×1000 Settings
+retains appearance/schedule left and AI/data right. Mobile 390×844 width stayed 375;
+logout confirmation and disabled login screen verified; 360px login screenshot contained.
+No real login/domain verification claimed. JS syntax/diff checks pass.
+
+Changed files: OIDC module/config/routes/tests/dependency, account JS/HTML/CSS/SW, env
+example, run commands and docs. Known limitations: RS256 only, no automated account
+merge; real BotFather domain/credentials and staging login required. Existing photo/restore
+backlog remains. Rollback: remove OIDC env; legacy HMAC boundary remains; no DB deletion.
+Next: shared photo domain after this tested checkpoint, then restore and final QA.

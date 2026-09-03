@@ -228,3 +228,6 @@ textarea { min-height:210px; resize:vertical; }
   .import-row .subject-field,.import-row .location-field,.import-row .room-field,.import-row .teacher-field,.import-row .type-field { grid-column:auto; }
   #toast { right:16px; bottom:94px; }
 }
+.account-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+.account-actions > * { max-width:100%; white-space:normal; text-align:center; }
+#accountNotice { overflow-wrap:anywhere; }

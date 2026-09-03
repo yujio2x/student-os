@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -25,6 +25,7 @@ from app.entitlements import (
 from app.export_service import ExportTooLargeError, OwnedDataExportService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
+from app.telegram_oidc import LOGIN_COOKIE, OIDCError, TelegramOIDC
 
 
 ALLOWED_FIELDS = {"room", "teacher", "lesson_type", "group_name", "notes"}
@@ -222,10 +223,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database, config.bot_bridge_secret, config.bot_bridge_max_age_seconds
     )
     owned_export = OwnedDataExportService(database)
+    oidc = TelegramOIDC(database, config)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         database.initialize()
+        oidc.initialize()
         if config.environment != "production" and config.dev_login_enabled:
             local_user = database.ensure_local_user()
             database.seed_demo(local_user["id"])
@@ -241,6 +244,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.entitlements = entitlements
     app.state.bridge = bridge
     app.state.owned_export = owned_export
+    app.state.oidc = oidc
 
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
@@ -388,6 +392,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sessions.revoke(request.cookies.get(SESSION_COOKIE))
         return issue_browser_session(response, user, "telegram")
 
+    @app.get("/api/auth/options")
+    def auth_options() -> dict:
+        return {"telegram_login": oidc.configured,
+                "development_login": config.environment != "production" and config.dev_login_enabled}
+
+    @app.post("/api/auth/telegram/start")
+    def start_telegram_login(request: Request, response: Response) -> dict:
+        session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
+        token_hash = ""
+        target = None
+        if session:
+            supplied = request.headers.get("X-CSRF-Token", "")
+            if not secrets.compare_digest(supplied, session["csrf_token"]):
+                raise HTTPException(status_code=403, detail="Invalid CSRF token")
+            token_hash = sessions.token_hash(request.cookies[SESSION_COOKIE])
+            target = session["user_id"]
+        try:
+            url, browser = oidc.begin(token_hash, target)
+        except OIDCError:
+            raise HTTPException(status_code=503, detail="Вход через Telegram пока недоступен") from None
+        response.set_cookie(LOGIN_COOKIE, browser, max_age=300, httponly=True,
+                            secure=config.secure_cookies, samesite="lax", path="/api/auth/telegram")
+        response.headers["Cache-Control"] = "no-store"
+        return {"url": url}
+
+    @app.get("/api/auth/telegram/callback")
+    def telegram_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        response = RedirectResponse("/?telegram=connected#settings", status_code=303)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.delete_cookie(LOGIN_COOKIE, path="/api/auth/telegram")
+        try:
+            token = request.cookies.get(SESSION_COOKIE, "")
+            attempt = oidc.consume(state, request.cookies.get(LOGIN_COOKIE, ""),
+                                   sessions.token_hash(token) if token else "")
+            if error:
+                raise OIDCError("cancelled")
+            verified = oidc.exchange(code, attempt["verifier"])
+            if attempt["target_user_id"]:
+                session = sessions.resolve(token)
+                if not session or session["user_id"] != attempt["target_user_id"]:
+                    raise OIDCError("expired")
+                database.link_telegram_identity(session["user_id"], verified["telegram_id"],
+                                                verified["username"], verified["display_name"])
+            user = database.telegram_login_user(verified["telegram_id"], verified["username"], verified["display_name"])
+            if config.owner_telegram_id and secrets.compare_digest(verified["telegram_id"], config.owner_telegram_id):
+                database.set_user_role(user["id"], "admin")
+                user["role"] = "admin"
+            sessions.revoke(token)
+            issue_browser_session(response, user, "telegram")
+        except ExternalIdentityConflict:
+            response.headers["location"] = "/?telegram=conflict#settings"
+        except OIDCError as exc:
+            reason = str(exc) if str(exc) in {"expired", "cancelled"} else "failed"
+            response.headers["location"] = f"/?telegram={reason}#settings"
+        return response
+
     @app.post("/api/account/telegram/link")
     def link_telegram(
         payload: TelegramAuthPayload, session: dict = Depends(csrf_session)
@@ -454,6 +515,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "telegram": {
                 "configured": bool(config.telegram_bot_token),
+                "login_available": oidc.configured,
                 "identity": telegram_identity,
             },
             "student_ai_entitlement": entitlement,

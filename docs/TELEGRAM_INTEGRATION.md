@@ -1,6 +1,34 @@
 # Telegram login, credits и cloud backup
 
-Статус: internal identity, server sessions, Telegram HMAC verification и account-link boundary реализованы; live production UI/configuration ещё заблокированы credentials/domain.
+Статус: server sessions, legacy HMAC boundary и OIDC Authorization Code + PKCE с account UI реализованы. Реальная production-проверка требует credentials/domain.
+
+## Настройка текущего входа
+
+В BotFather → Login Widget зарегистрируйте HTTPS origin и точный callback
+`https://YOUR-DOMAIN/api/auth/telegram/callback`; сохраните выданные Client ID/Secret
+в `TELEGRAM_CLIENT_ID`, `TELEGRAM_CLIENT_SECRET`, а callback — в `TELEGRAM_REDIRECT_URI`.
+Алгоритм ID token — RS256. `APP_ENV=production` включает Secure cookies; development
+flags выключить. Не копируйте секреты в репозиторий. Источник: [Telegram Login](https://core.telegram.org/bots/telegram-login).
+
+Кнопка Settings запускает серверный flow с одноразовым state, PKCE verifier и отдельной
+HttpOnly SameSite=Lax cookie на пять минут. Callback привязан также к исходной сессии,
+если она была; проверяет RS256 signature, issuer, audience, expiry, issue time и числовой
+Telegram `id` (не OIDC `sub`). Никакие browser profile claims сами по себе не доверены.
+Raw ID/access tokens не сохраняются. State расходуется один раз перед обменом code.
+
+При текущей сессии flow связывает Telegram с её internal user; конфликт с существующим
+аккаунтом отклоняется без переноса/слияния данных. Для входа в уже существующий аккаунт
+нужно выйти и войти через Telegram. Успешный вход обновляет session/CSRF. Удаление
+единственной Telegram identity остаётся запрещённым. Logout не удаляет данные.
+
+Settings показывает trial/credits/unlimited, покупку и ручное обновление баланса.
+Без credentials кнопка честно disabled; в production вместо dev-login показывается
+экран входа. Отказ, истечение и конфликт отображаются без секретных параметров URL.
+Существующие HMAC endpoints сохранены для совместимости; новая UI использует OIDC.
+
+Не логируйте callback query string, code, token response или cookies на reverse proxy.
+Штатные Procfile/run.py отключают Uvicorn access log, который иначе включал бы code.
+Live login/owner verification проверяются владельцем в staging; fixtures не заменяют это.
 
 ## Фактическая реализация
 

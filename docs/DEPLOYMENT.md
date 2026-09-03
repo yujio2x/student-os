@@ -9,6 +9,8 @@ Student OS готов к staging-развёртыванию как один ASGI
 - HTTPS завершается на доверенном reverse proxy, который не логирует cookie, Telegram payload или тела пользовательских запросов.
 - `TELEGRAM_BOT_TOKEN`, разрешённый домен/redirect, `OWNER_TELEGRAM_ID` и `BOT_BRIDGE_SECRET` задаются только через secret storage платформы.
 - `OPENAI_API_KEY` необязателен для деморежима; production-ключ хранится только в secret storage.
+- `TELEGRAM_CLIENT_ID`, `TELEGRAM_CLIENT_SECRET`, `TELEGRAM_REDIRECT_URI` включают OIDC UI; callback должен быть HTTPS `/api/auth/telegram/callback` и зарегистрирован в BotFather. RS256 — единственный разрешённый алгоритм текущей реализации.
+- Reverse proxy не должен логировать query string callback (authorization code). Штатный Uvicorn access log отключён; callback отдаёт `no-store` и `no-referrer`.
 
 `ENTITLEMENT_SOURCE=core` включает новый authoritative Student OS ledger. `unconnected` — аварийный fail-closed режим, в котором AI и credit mutations отклоняются. `BOT_BRIDGE_SECRET` должен быть длинным случайным значением, одинаковым только у Core и Telegram adapter; bridge без него возвращает 503.
 

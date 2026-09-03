@@ -24,6 +24,9 @@ class Settings:
     bot_bridge_secret: str = ""
     bot_bridge_max_age_seconds: int = 300
     telegram_bot_username: str = ""
+    telegram_client_id: str = ""
+    telegram_client_secret: str = ""
+    telegram_redirect_uri: str = ""
 
 
 def load_settings() -> Settings:
@@ -52,4 +55,7 @@ def load_settings() -> Settings:
             30, int(os.getenv("BOT_BRIDGE_MAX_AGE_SECONDS", "300"))
         ),
         telegram_bot_username=os.getenv("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@"),
+        telegram_client_id=os.getenv("TELEGRAM_CLIENT_ID", "").strip(),
+        telegram_client_secret=os.getenv("TELEGRAM_CLIENT_SECRET", "").strip(),
+        telegram_redirect_uri=os.getenv("TELEGRAM_REDIRECT_URI", "").strip(),
     )
