@@ -71,10 +71,15 @@ def test_pwa_manifest_and_worker_keep_authenticated_data_out_of_cache(tmp_path: 
     assert manifest["name"] == "Student OS"
     assert manifest["display"] == "standalone"
     assert manifest["start_url"] == "/"
-    assert manifest["icons"] and manifest["icons"][0]["sizes"] == "any"
+    assert {icon["sizes"] for icon in manifest["icons"]} == {"192x192", "512x512", "any"}
+    assert manifest["theme_color"] == "#17171b"
     assert 'rel="manifest"' in html
+    assert 'rel="apple-touch-icon"' in html
     app_js = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
     assert "serviceWorker.register" in app_js
     assert 'url.pathname.startsWith("/api/")' in worker
     assert 'url.pathname.startsWith("/admin")' in worker
     assert "/api/" not in " ".join(worker.split("PUBLIC_SHELL=")[1].split(";")[0:1])
+    for name in ("icon-192.png", "icon-512.png"):
+        icon = (Path(__file__).parents[1] / "static" / name).read_bytes()
+        assert icon.startswith(b"\x89PNG\r\n\x1a\n")

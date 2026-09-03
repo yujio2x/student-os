@@ -4,7 +4,7 @@ Student OS готов к staging-развёртыванию как один ASGI
 
 ## Обязательная production-конфигурация
 
-- `APP_ENV=production` и `DEV_LOGIN_ENABLED=false` — development-вход закрыт, session cookie получает `Secure`.
+- `APP_ENV=production`, `DEV_LOGIN_ENABLED=false` и `DEV_ADMIN_ENABLED=false` — development-вход и bootstrap администратора закрыты, session cookie получает `Secure`. Даже ошибочно включённый `DEV_ADMIN_ENABLED` игнорируется вне development.
 - `DATABASE_PATH` должен указывать на постоянный подключённый volume. Эфемерная SQLite удалит пользователей и их данные при пересоздании инстанса.
 - HTTPS завершается на доверенном reverse proxy, который не логирует cookie, Telegram payload или тела пользовательских запросов.
 - `TELEGRAM_BOT_TOKEN`, разрешённый домен/redirect и `ADMIN_TELEGRAM_ID` задаются только через secret storage платформы.

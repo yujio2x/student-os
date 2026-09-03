@@ -64,7 +64,7 @@ class LocalEntitlementService:
             if existing:
                 if existing["user_id"] != user_id:
                     raise ReservationConflict("request_id belongs to another user")
-                return dict(existing)
+                return {**dict(existing), "reused": True}
             self._ensure_account(db, user_id)
             account = db.execute(
                 "SELECT balance, unlimited FROM ai_entitlements WHERE user_id=?", (user_id,)
@@ -88,7 +88,7 @@ class LocalEntitlementService:
             row = db.execute(
                 "SELECT * FROM ai_credit_reservations WHERE request_id=?", (request_id,)
             ).fetchone()
-        return dict(row)
+        return {**dict(row), "reused": False}
 
     def commit_usage(self, request_id: str) -> dict:
         return self._transition(request_id, "committed")

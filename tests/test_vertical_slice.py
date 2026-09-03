@@ -13,10 +13,23 @@ from app.main import create_app
 
 @pytest.fixture()
 def client(tmp_path: Path):
-    app = create_app(Settings(tmp_path / "student-os.db", "", "gpt-5.6-luna"))
+    app = create_app(
+        Settings(
+            tmp_path / "student-os.db", "", "gpt-5.6-luna", entitlement_source="local"
+        )
+    )
     with TestClient(app) as test_client:
         login = test_client.post("/api/auth/dev-login")
         test_client.headers["X-CSRF-Token"] = login.json()["csrf_token"]
+        user_id = login.json()["user"]["id"]
+        app.state.database.link_telegram_identity(
+            user_id, "10001", "student_fixture", "Student Fixture"
+        )
+        app.state.entitlements.get_balance(user_id)
+        with app.state.database.connection() as db:
+            db.execute(
+                "UPDATE ai_entitlements SET unlimited=1 WHERE user_id=?", (user_id,)
+            )
         yield test_client
 
 

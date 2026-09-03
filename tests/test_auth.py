@@ -91,6 +91,35 @@ def test_mutations_require_csrf_and_production_has_no_dev_login(tmp_path: Path) 
         assert client.get("/api/bootstrap").status_code == 401
 
 
+def test_dev_admin_is_explicit_and_impossible_in_production(tmp_path: Path) -> None:
+    development = create_app(
+        Settings(
+            tmp_path / "dev-admin.db", "", "gpt-5.6-luna",
+            environment="development", dev_login_enabled=True, dev_admin_enabled=True,
+        )
+    )
+    with TestClient(development) as client:
+        session = login(client)
+        assert session["user"]["role"] == "admin"
+        assert client.get("/admin").status_code == 200
+        assert client.get("/api/admin/overview").status_code == 200
+
+    production = create_app(
+        Settings(
+            tmp_path / "production-admin.db", "", "gpt-5.6-luna",
+            environment="production", secure_cookies=False,
+            dev_login_enabled=True, dev_admin_enabled=True,
+        )
+    )
+    with TestClient(production) as client:
+        assert client.post("/api/auth/dev-login").status_code == 404
+        forged_admin = production.state.database.create_user("Not Telegram", role="admin")
+        issued = production.state.sessions.issue(forged_admin["id"])
+        client.cookies.set(SESSION_COOKIE, issued.token)
+        assert client.get("/admin").status_code == 403
+        assert client.get("/api/admin/overview").status_code == 403
+
+
 def test_users_cannot_read_or_modify_foreign_objects(tmp_path: Path) -> None:
     app = app_for(tmp_path / "isolation.db")
     with TestClient(app) as client:

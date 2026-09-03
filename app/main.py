@@ -17,7 +17,9 @@ from app.database import (
     AdminActionConflict, Database, DeadlineConflictError, ExternalIdentityConflict,
     LessonConflictError,
 )
-from app.entitlements import LocalEntitlementService
+from app.entitlements import (
+    InsufficientCredits, LocalEntitlementService, ReservationConflict,
+)
 from app.export_service import ExportTooLargeError, OwnedDataExportService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
@@ -30,6 +32,9 @@ class StudyRequest(BaseModel):
     assignment: str = Field(min_length=3, max_length=12_000)
     subject: str = Field(default="", max_length=120)
     title: str = Field(default="", max_length=160)
+    request_id: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(18), min_length=8, max_length=128
+    )
 
     @field_validator("assignment")
     @classmethod
@@ -206,6 +211,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def admin_session(session: dict = Depends(current_session)) -> dict:
         if session["role"] != "admin":
             raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
+        if config.environment == "production":
+            identity = database.telegram_identity(session["user_id"])
+            owner_id = identity["provider_user_id"] if identity else ""
+            if not config.admin_telegram_id or not secrets.compare_digest(
+                owner_id, config.admin_telegram_id
+            ):
+                raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
         return session
 
     def admin_csrf_session(
@@ -232,6 +244,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if config.environment == "production" or not config.dev_login_enabled:
             raise HTTPException(status_code=404, detail="Not found")
         user = database.ensure_local_user()
+        database.set_user_role(
+            user["id"],
+            "admin" if config.dev_admin_enabled and config.environment == "development" else "user",
+        )
+        user["role"] = (
+            "admin" if config.dev_admin_enabled and config.environment == "development" else "user"
+        )
         sessions.revoke(request.cookies.get(SESSION_COOKIE))
         return issue_browser_session(response, user, "development")
 
@@ -303,6 +322,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/bootstrap")
     def bootstrap(session: dict = Depends(current_session)) -> dict:
         user_id = session["user_id"]
+        telegram_identity = database.telegram_identity(user_id)
+        entitlement = (
+            app.state.entitlements.get_balance(user_id)
+            if telegram_identity
+            else {"connected": False, "source": "telegram-required"}
+        )
         return {
             "lessons": database.lessons(user_id),
             "deadlines": database.deadlines(user_id),
@@ -314,9 +339,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "telegram": {
                 "configured": bool(config.telegram_bot_token),
-                "identity": database.telegram_identity(user_id),
+                "identity": telegram_identity,
             },
-            "student_ai_entitlement": entitlements.get_balance(user_id),
+            "student_ai_entitlement": entitlement,
         }
 
     @app.get("/api/export")
@@ -342,11 +367,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/study/analyze")
     def analyze(payload: StudyRequest, session: dict = Depends(csrf_session)) -> dict:
+        user_id = session["user_id"]
+        if database.telegram_identity(user_id) is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Войдите через Telegram, чтобы использовать Student AI",
+            )
+        entitlement = app.state.entitlements.get_balance(user_id)
+        if not entitlement["connected"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Student AI готов к подключению, но источник credits пока не подключён",
+            )
         try:
-            result = study.analyze(payload.assignment, payload.subject, payload.title).to_dict()
-            database.record_event(session["user_id"], "student_ai_used")
+            reservation = app.state.entitlements.reserve_credit(user_id, payload.request_id)
+            if reservation.get("reused"):
+                raise ReservationConflict("Этот запрос Student AI уже обрабатывался")
+        except InsufficientCredits as exc:
+            raise HTTPException(status_code=402, detail="Недостаточно credits Student AI") from exc
+        except ReservationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        try:
+            result = app.state.study.analyze(
+                payload.assignment, payload.subject, payload.title
+            ).to_dict()
+            app.state.entitlements.commit_usage(payload.request_id)
+            database.record_event(user_id, "student_ai_used")
             return result
         except Exception as exc:
+            try:
+                app.state.entitlements.release_reservation(payload.request_id)
+            except ReservationConflict:
+                pass
             raise HTTPException(status_code=502, detail="AI analysis failed safely; no deadline was saved") from exc
 
     @app.post("/api/lessons", status_code=201)
