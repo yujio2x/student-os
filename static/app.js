@@ -1,4 +1,4 @@
-const state={lessons:[],deadlines:[],preferences:null,importRows:[],includeSrsp:false,calendarDate:new Date(new Date().getFullYear(),new Date().getMonth(),1)};
+const state={lessons:[],deadlines:[],preferences:null,session:null,importRows:[],includeSrsp:false,calendarDate:new Date(new Date().getFullYear(),new Date().getMonth(),1)};
 const dayNames=["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"];
 const shortDays=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 const fieldLabels={room:"Кабинет",teacher:"Преподаватель",lesson_type:"Тип",group_name:"Группа",notes:"Заметки"};
@@ -6,8 +6,9 @@ const optionalFields=Object.keys(fieldLabels);
 
 async function api(url,options={}){
   const headers=options.body instanceof FormData?{}:{"Content-Type":"application/json"};
+  if(options.method&&options.method!=="GET"&&state.session?.csrf_token)headers["X-CSRF-Token"]=state.session.csrf_token;
   const response=await fetch(url,{...options,headers:{...headers,...(options.headers||{})}});
-  if(!response.ok){const data=await response.json().catch(()=>({}));const detail=Array.isArray(data.detail)?data.detail.map(x=>x.msg).join("; "):data.detail;throw new Error(detail||`Ошибка ${response.status}`);}
+  if(!response.ok){const data=await response.json().catch(()=>({}));const detail=Array.isArray(data.detail)?data.detail.map(x=>x.msg).join("; "):data.detail,error=new Error(detail||`Ошибка ${response.status}`);error.status=response.status;throw error;}
   return response.status===204?null:response.json();
 }
 const localDateKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -87,5 +88,5 @@ function bindEvents(){
   const assignment=document.querySelector("#assignment");assignment.addEventListener("input",()=>document.querySelector("#charCount").textContent=`${assignment.value.length.toLocaleString("ru")} / 12 000`);document.querySelector("#studyForm").addEventListener("submit",async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button[type=submit]");b.disabled=true;b.textContent="Разбираю…";try{renderStudyResult(await api("/api/study/analyze",{method:"POST",body:JSON.stringify({assignment:assignment.value,subject:document.querySelector("#studySubject").value,title:document.querySelector("#studyTitle").value})}));}catch(error){toast(error.message);}finally{b.disabled=false;b.textContent="Получить разбор";}});
   matchMedia("(max-width: 900px)").addEventListener("change",renderSchedule);document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
 }
-async function init(){document.querySelector("#dateLabel").textContent=new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"});buildFieldControls(document.querySelector("#fieldOptions"));buildFieldControls(document.querySelector("#settingsFieldOptions"));if(localStorage.getItem("student-os-sidebar")==="collapsed")document.querySelector("#appShell").classList.add("sidebar-collapsed");try{Object.assign(state,await api("/api/bootstrap"));sortLessons();applyTheme();document.querySelector("#aiMode").textContent=state.ai_mode==="live"?"Student AI: подключён":"Student AI: деморежим";renderToday();renderSchedule();renderCalendar();}catch(error){toast(`Не удалось загрузить Student OS: ${error.message}`);return;}bindEvents();navigate(location.hash.slice(1)||"today");}
+async function init(){document.querySelector("#dateLabel").textContent=new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"});buildFieldControls(document.querySelector("#fieldOptions"));buildFieldControls(document.querySelector("#settingsFieldOptions"));if(localStorage.getItem("student-os-sidebar")==="collapsed")document.querySelector("#appShell").classList.add("sidebar-collapsed");try{let bootstrap;try{bootstrap=await api("/api/bootstrap");}catch(error){if(error.status!==401)throw error;state.session=await api("/api/auth/dev-login",{method:"POST"});bootstrap=await api("/api/bootstrap");}Object.assign(state,bootstrap);sortLessons();applyTheme();document.querySelector("#aiMode").textContent=state.ai_mode==="live"?"Student AI: подключён":"Student AI: деморежим";renderToday();renderSchedule();renderCalendar();}catch(error){toast(`Не удалось загрузить Student OS: ${error.message}`);return;}bindEvents();navigate(location.hash.slice(1)||"today");}
 document.addEventListener("DOMContentLoaded",init);

@@ -15,6 +15,8 @@ from app.main import create_app
 def client(tmp_path: Path):
     app = create_app(Settings(tmp_path / "student-os.db", "", "gpt-5.6-luna"))
     with TestClient(app) as test_client:
+        login = test_client.post("/api/auth/dev-login")
+        test_client.headers["X-CSRF-Token"] = login.json()["csrf_token"]
         yield test_client
 
 

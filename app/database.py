@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
+from uuid import uuid4
 
 
 class LessonConflictError(ValueError):
@@ -73,12 +75,36 @@ class Database:
                     visible_fields TEXT NOT NULL DEFAULT 'room,teacher,lesson_type'
                 );
 
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL DEFAULT '',
+                    role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+                    created_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    csrf_token TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS app_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_lessons_user_day
                     ON lessons(user_id, weekday, starts_at);
                 CREATE INDEX IF NOT EXISTS idx_deadlines_user_due
                     ON deadlines(user_id, due_at);
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_deadlines_deduplicate
                     ON deadlines(user_id, title, due_at, source);
+                CREATE INDEX IF NOT EXISTS idx_sessions_user
+                    ON sessions(user_id, expires_at);
                 """
             )
             columns = {
@@ -95,6 +121,93 @@ class Database:
                 db.execute(
                     "ALTER TABLE lessons ADD COLUMN location TEXT NOT NULL DEFAULT ''"
                 )
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(UTC).isoformat(timespec="seconds")
+
+    def create_user(self, display_name: str = "", role: str = "user") -> dict:
+        user_id = str(uuid4())
+        now = self._now()
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO users(id, display_name, role, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, display_name, role, now, now),
+            )
+            db.execute("INSERT INTO preferences(user_id) VALUES (?)", (user_id,))
+            row = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row)
+
+    def ensure_local_user(self) -> dict:
+        """Create one stable development identity and migrate legacy local rows once."""
+        with self.connection() as db:
+            stored = db.execute(
+                "SELECT value FROM app_meta WHERE key='development_user_id'"
+            ).fetchone()
+            user_id = str(stored["value"]) if stored else str(uuid4())
+            now = self._now()
+            db.execute(
+                """INSERT OR IGNORE INTO users(id, display_name, role, created_at, last_seen_at)
+                VALUES (?, 'Локальный студент', 'user', ?, ?)""",
+                (user_id, now, now),
+            )
+            db.execute(
+                "INSERT OR IGNORE INTO app_meta(key, value) VALUES ('development_user_id', ?)",
+                (user_id,),
+            )
+            db.execute("UPDATE lessons SET user_id=? WHERE user_id='local-demo-user'", (user_id,))
+            db.execute("UPDATE deadlines SET user_id=? WHERE user_id='local-demo-user'", (user_id,))
+            legacy_preferences = db.execute(
+                "SELECT * FROM preferences WHERE user_id='local-demo-user'"
+            ).fetchone()
+            if legacy_preferences:
+                db.execute(
+                    """INSERT OR IGNORE INTO preferences
+                    (user_id, theme, schedule_view, mobile_schedule_view, visible_fields)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        user_id, legacy_preferences["theme"], legacy_preferences["schedule_view"],
+                        legacy_preferences["mobile_schedule_view"], legacy_preferences["visible_fields"],
+                    ),
+                )
+                db.execute("DELETE FROM preferences WHERE user_id='local-demo-user'")
+            else:
+                db.execute("INSERT OR IGNORE INTO preferences(user_id) VALUES (?)", (user_id,))
+            row = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row)
+
+    def create_session(
+        self, token_hash: str, user_id: str, csrf_token: str, expires_at: str
+    ) -> None:
+        with self.connection() as db:
+            db.execute(
+                """INSERT INTO sessions
+                (token_hash, user_id, csrf_token, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)""",
+                (token_hash, user_id, csrf_token, self._now(), expires_at),
+            )
+
+    def session(self, token_hash: str) -> dict | None:
+        now = self._now()
+        with self.connection() as db:
+            row = db.execute(
+                """SELECT s.token_hash, s.user_id, s.csrf_token, s.expires_at,
+                u.display_name, u.role
+                FROM sessions s JOIN users u ON u.id=s.user_id
+                WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>?""",
+                (token_hash, now),
+            ).fetchone()
+            if row:
+                db.execute("UPDATE users SET last_seen_at=? WHERE id=?", (now, row["user_id"]))
+        return dict(row) if row else None
+
+    def revoke_session(self, token_hash: str) -> bool:
+        with self.connection() as db:
+            cursor = db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL",
+                (self._now(), token_hash),
+            )
+            return cursor.rowcount == 1
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:

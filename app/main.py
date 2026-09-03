@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.ai_service import StudyService
+from app.auth import SESSION_COOKIE, SessionService
 from app.config import Settings, load_settings
 from app.database import Database, DeadlineConflictError, LessonConflictError
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 
 
-LOCAL_USER = "local-demo-user"
 ALLOWED_FIELDS = {"room", "teacher", "lesson_type", "group_name", "notes"}
 
 
@@ -111,51 +112,104 @@ class ImportConfirm(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or load_settings()
     database = Database(config.database_path)
+    sessions = SessionService(database, config.session_ttl_hours)
     study = StudyService(config.openai_api_key, config.openai_model)
     schedule_import = ScheduleImportService(config.openai_api_key, config.openai_model)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         database.initialize()
-        database.seed_demo(LOCAL_USER)
+        if config.environment != "production" and config.dev_login_enabled:
+            local_user = database.ensure_local_user()
+            database.seed_demo(local_user["id"])
         yield
 
     app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
     app.state.database = database
     app.state.study = study
     app.state.schedule_import = schedule_import
+    app.state.sessions = sessions
+
+    def current_session(request: Request) -> dict:
+        session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
+        if session is None:
+            raise HTTPException(status_code=401, detail="Требуется вход")
+        return session
+
+    def csrf_session(request: Request, session: dict = Depends(current_session)) -> dict:
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not secrets.compare_digest(supplied, session["csrf_token"]):
+            raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
+        return session
+
+    @app.post("/api/auth/dev-login")
+    def development_login(request: Request, response: Response) -> dict:
+        if config.environment == "production" or not config.dev_login_enabled:
+            raise HTTPException(status_code=404, detail="Not found")
+        user = database.ensure_local_user()
+        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        issued = sessions.issue(user["id"])
+        response.set_cookie(
+            SESSION_COOKIE, issued.token, max_age=config.session_ttl_hours * 3600,
+            httponly=True, secure=config.secure_cookies, samesite="lax", path="/",
+        )
+        return {
+            "user": {"id": user["id"], "display_name": user["display_name"], "role": user["role"]},
+            "csrf_token": issued.csrf_token,
+            "expires_at": issued.expires_at,
+            "mode": "development",
+        }
+
+    @app.get("/api/auth/session")
+    def auth_session(session: dict = Depends(current_session)) -> dict:
+        return {
+            "user": {"id": session["user_id"], "display_name": session["display_name"], "role": session["role"]},
+            "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
+        }
+
+    @app.post("/api/auth/logout", status_code=204)
+    def logout(request: Request, session: dict = Depends(csrf_session)) -> Response:
+        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        response = Response(status_code=204)
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return response
 
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "stage": "PROTOTYPE"}
 
     @app.get("/api/bootstrap")
-    def bootstrap() -> dict:
+    def bootstrap(session: dict = Depends(current_session)) -> dict:
+        user_id = session["user_id"]
         return {
-            "lessons": database.lessons(LOCAL_USER),
-            "deadlines": database.deadlines(LOCAL_USER),
-            "preferences": database.preferences(LOCAL_USER),
+            "lessons": database.lessons(user_id),
+            "deadlines": database.deadlines(user_id),
+            "preferences": database.preferences(user_id),
             "ai_mode": "live" if study.client else "demo",
+            "session": {
+                "user": {"id": user_id, "display_name": session["display_name"], "role": session["role"]},
+                "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
+            },
         }
 
     @app.post("/api/study/analyze")
-    def analyze(payload: StudyRequest) -> dict:
+    def analyze(payload: StudyRequest, session: dict = Depends(csrf_session)) -> dict:
         try:
             return study.analyze(payload.assignment, payload.subject, payload.title).to_dict()
         except Exception as exc:
             raise HTTPException(status_code=502, detail="AI analysis failed safely; no deadline was saved") from exc
 
     @app.post("/api/lessons", status_code=201)
-    def create_lesson(payload: LessonInput) -> dict:
+    def create_lesson(payload: LessonInput, session: dict = Depends(csrf_session)) -> dict:
         try:
-            return database.add_lesson(LOCAL_USER, payload.record())
+            return database.add_lesson(session["user_id"], payload.record())
         except LessonConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.put("/api/lessons/{lesson_id}")
-    def update_lesson(lesson_id: int, payload: LessonInput) -> dict:
+    def update_lesson(lesson_id: int, payload: LessonInput, session: dict = Depends(csrf_session)) -> dict:
         try:
-            result = database.update_lesson(LOCAL_USER, lesson_id, payload.record())
+            result = database.update_lesson(session["user_id"], lesson_id, payload.record())
         except LessonConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if result is None:
@@ -163,13 +217,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return result
 
     @app.delete("/api/lessons/{lesson_id}", status_code=204)
-    def delete_lesson(lesson_id: int) -> Response:
-        if not database.delete_lesson(LOCAL_USER, lesson_id):
+    def delete_lesson(lesson_id: int, session: dict = Depends(csrf_session)) -> Response:
+        if not database.delete_lesson(session["user_id"], lesson_id):
             raise HTTPException(status_code=404, detail="Занятие не найдено")
         return Response(status_code=204)
 
     @app.post("/api/schedule/import/preview")
-    async def preview_schedule_import(file: UploadFile = File(...)) -> dict:
+    async def preview_schedule_import(
+        file: UploadFile = File(...), session: dict = Depends(csrf_session)
+    ) -> dict:
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         await file.close()
         if len(data) > MAX_UPLOAD_BYTES:
@@ -194,34 +250,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.post("/api/schedule/import/confirm", status_code=201)
-    def confirm_schedule_import(payload: ImportConfirm) -> dict:
+    def confirm_schedule_import(payload: ImportConfirm, session: dict = Depends(csrf_session)) -> dict:
         try:
             lessons = database.import_lessons(
-                LOCAL_USER, [lesson.record() for lesson in payload.lessons]
+                session["user_id"], [lesson.record() for lesson in payload.lessons]
             )
         except LessonConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"lessons": lessons, "imported": len(lessons)}
 
     @app.post("/api/deadlines", status_code=201)
-    def create_deadline(payload: DeadlineCreate) -> dict:
+    def create_deadline(payload: DeadlineCreate, session: dict = Depends(csrf_session)) -> dict:
         return database.add_deadline(
-            LOCAL_USER, payload.title, payload.subject.strip(),
+            session["user_id"], payload.title, payload.subject.strip(),
             payload.due_at.isoformat(timespec="minutes"), payload.description.strip(), payload.source,
         )
 
     @app.patch("/api/deadlines/{deadline_id}")
-    def update_deadline(deadline_id: int, payload: CompletionUpdate) -> dict:
-        result = database.set_deadline_completed(LOCAL_USER, deadline_id, payload.completed)
+    def update_deadline(
+        deadline_id: int, payload: CompletionUpdate, session: dict = Depends(csrf_session)
+    ) -> dict:
+        result = database.set_deadline_completed(session["user_id"], deadline_id, payload.completed)
         if result is None:
             raise HTTPException(status_code=404, detail="Deadline not found")
         return result
 
     @app.put("/api/deadlines/{deadline_id}")
-    def replace_deadline(deadline_id: int, payload: DeadlineUpdate) -> dict:
+    def replace_deadline(
+        deadline_id: int, payload: DeadlineUpdate, session: dict = Depends(csrf_session)
+    ) -> dict:
         try:
             result = database.update_deadline(
-                LOCAL_USER, deadline_id, payload.title, payload.subject.strip(),
+                session["user_id"], deadline_id, payload.title, payload.subject.strip(),
                 payload.due_at.isoformat(timespec="minutes"), payload.description.strip(),
                 payload.completed,
             )
@@ -232,15 +292,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return result
 
     @app.delete("/api/deadlines/{deadline_id}", status_code=204)
-    def delete_deadline(deadline_id: int) -> Response:
-        if not database.delete_deadline(LOCAL_USER, deadline_id):
+    def delete_deadline(deadline_id: int, session: dict = Depends(csrf_session)) -> Response:
+        if not database.delete_deadline(session["user_id"], deadline_id):
             raise HTTPException(status_code=404, detail="Дедлайн не найден")
         return Response(status_code=204)
 
     @app.put("/api/preferences")
-    def update_preferences(payload: PreferencesUpdate) -> dict:
+    def update_preferences(payload: PreferencesUpdate, session: dict = Depends(csrf_session)) -> dict:
         return database.update_preferences(
-            LOCAL_USER, payload.theme, payload.schedule_view,
+            session["user_id"], payload.theme, payload.schedule_view,
             payload.mobile_schedule_view, payload.visible_fields,
         )
 
