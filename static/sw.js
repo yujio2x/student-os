@@ -1,5 +1,5 @@
-const CACHE_NAME="student-os-shell-v6";
-const PUBLIC_SHELL=["/","/static/styles.css","/static/app.js","/static/account.js","/static/photo.js","/static/restore.js","/static/manifest.webmanifest","/static/icon.svg","/static/icon-192.png","/static/icon-512.png"];
+const CACHE_NAME="student-os-shell-v7";
+const PUBLIC_SHELL=["/","/static/styles.css","/static/app.js","/static/account.js","/static/photo.js","/static/restore.js","/static/pwa.js","/static/manifest.webmanifest","/static/icon.svg","/static/icon-192.png","/static/icon-512.png"];
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(PUBLIC_SHELL)));
@@ -7,7 +7,7 @@ self.addEventListener("install",event=>{
 });
 
 self.addEventListener("activate",event=>{
-  event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE_NAME).map(key=>caches.delete(key)))));
+  event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith("student-os-shell-")&&key!==CACHE_NAME).map(key=>caches.delete(key)))));
   self.clients.claim();
 });
 
@@ -18,5 +18,5 @@ self.addEventListener("fetch",event=>{
   event.respondWith(fetch(event.request).then(response=>{
     if(response.ok)caches.open(CACHE_NAME).then(cache=>cache.put(event.request,response.clone()));
     return response;
-  }).catch(()=>caches.match(event.request)));
+  }).catch(()=>caches.match(url.pathname)));
 });

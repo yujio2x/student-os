@@ -1,5 +1,45 @@
 # Student OS engineering DEVLOG
 
+## 2026-09-04 — PWA eligibility and final beta handoff
+
+Starting checkpoint `a4e48fd` (Core CI GREEN); bot remains `f6e4552` (CI GREEN).
+Browser investigation found the old `/static/sw.js` registration could not control
+the application root. Added `/sw.js` with no-cache, explicit root scope and migration
+of only the exact obsolete Student OS registration. Cache cleanup now targets only
+Student OS caches. Offline fallback normalizes asset query versions; API/admin/auth
+callback data remain outside the public-shell allowlist.
+
+Added an install action in Settings/Data only after `beforeinstallprompt` eligibility;
+hidden when installed/standalone, no automatic prompt, no repeated submission.
+Browser caught restore's fragile last-child selector after inserting the action;
+fixed lookup/fallback and bumped script versions to invalidate stale browser assets.
+Chrome now shows the install button, and restore opens/cancels correctly. Desktop
+and 390×844 Settings checked; scrollWidth/clientWidth both 375 on mobile.
+No actual OS installation was performed: eligibility is verified, standalone launch
+and platform installation remain manual acceptance items.
+
+Validation: full Core **99 passed** with actual pinned bot adapter, bot previous full
+suite **73 passed** unchanged. New Node behavioral test covers eligibility, duplicate
+click, dismiss, installed/standalone state, root registration and selective migration;
+it runs in CI. Python compile, all JS syntax and diff checks pass. Final commit's CI
+must be observed before declaring handoff green.
+
+Autonomous implementation is handed off as a tested beta candidate, not a live release.
+Shared identity/ledger/trial/credits/unlimited/payment and text/defense/photo flows are
+covered by deterministic integration tests. Owner admin access, user listing, credit,
+trial, unlimited, payment/feedback metrics and audit use the same Core data.
+OIDC connection/logout, purchase handoff, photo sessions and owned-data restore exist.
+Real Telegram authorization, paid AI/OCR quality and Stars delivery are NOT live-tested.
+
+Exact next step: owner chooses the staging HTTPS origin and persistent-volume target;
+follow `docs/DEPLOYMENT.md` with bridge OFF, then configure BotFather callback and secret
+storage outside Git. Approve any live bot restart/payment/deploy separately. No production
+action can safely substitute for these missing choices/credentials.
+Later hardening: audited crash-reservation recovery policy and conversational photo
+follow-ups beyond the implemented explicit selections. Neither is silently enabled.
+Live safety remains NO for runtime restart, live bridge enablement, legacy DB writes,
+secret exposure and production deployment. Bot's pre-existing dirty files remain untouched.
+
 ## 2026-09-04 — Synchronized bridge operational checkpoint
 
 Resumed the paused work from Core `2e6eff5` / bot `5a9ce77`; current baseline

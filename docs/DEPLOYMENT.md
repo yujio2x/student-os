@@ -1,5 +1,14 @@
 # Deployment contract
 
+## PWA acceptance
+
+`/sw.js` обслуживает root scope; reverse proxy должен отдавать этот путь без redirect
+и не заменять JavaScript HTML-страницей. Settings/Data показывает установку только после
+сигнала браузера о готовности. Chrome eligibility проверена локально; фактическая установка
+и standalone launch на production HTTPS остаются ручной проверкой. Кэшируется только
+public shell, не приватные API, admin, баланс или учебные данные. Offline shell не означает
+полную работу расписания/AI без сети. Старый worker `/static/` снимается выборочно.
+
 Student OS готов к staging-развёртыванию как один ASGI web process, но этот checkpoint ничего не публикует и не создаёт платные ресурсы.
 
 ## Обязательная production-конфигурация

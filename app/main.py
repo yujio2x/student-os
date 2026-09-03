@@ -1006,6 +1006,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def index() -> FileResponse:
         return FileResponse(static_dir / "index.html")
 
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker() -> FileResponse:
+        return FileResponse(static_dir / "sw.js", media_type="application/javascript",
+                            headers={"Cache-Control": "no-cache"})
+
     @app.get("/admin", include_in_schema=False)
     def admin_page(request: Request) -> FileResponse:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))

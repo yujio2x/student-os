@@ -63,7 +63,11 @@ def test_pwa_manifest_and_worker_keep_authenticated_data_out_of_cache(tmp_path: 
     app = create_app(Settings(tmp_path / "pwa.db", "", "gpt-5.6-luna"))
     with TestClient(app) as client:
         manifest_response = client.get("/static/manifest.webmanifest")
-        worker = client.get("/static/sw.js").text
+        response = client.get("/sw.js")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache"
+        assert "javascript" in response.headers["content-type"]
+        worker = response.text
         html = client.get("/").text
 
     manifest = json.loads(manifest_response.text)
@@ -75,8 +79,12 @@ def test_pwa_manifest_and_worker_keep_authenticated_data_out_of_cache(tmp_path: 
     assert manifest["theme_color"] == "#17171b"
     assert 'rel="manifest"' in html
     assert 'rel="apple-touch-icon"' in html
-    app_js = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+    app_js = (Path(__file__).parents[1] / "static" / "pwa.js").read_text(encoding="utf-8")
     assert "serviceWorker.register" in app_js
+    assert 'register("/sw.js",{scope:"/"})' in app_js
+    assert "beforeinstallprompt" in app_js
+    assert "appinstalled" in app_js
+    assert "/static/pwa.js" in html
     assert 'url.pathname.startsWith("/api/")' in worker
     assert 'url.pathname.startsWith("/admin")' in worker
     assert "PUBLIC_SHELL.includes(url.pathname)" in worker
