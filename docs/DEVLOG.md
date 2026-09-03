@@ -348,3 +348,48 @@ Known limitations: authentication and production user isolation are still absent
 External blocker: none for the next internal-user/session foundation.
 
 Next: replace `local-demo-user` with a verified server-side session identity and prove cross-user isolation.
+
+## 2026-09-03 - Internal identity and server-side session foundation
+
+Goal: remove production logic's dependency on `local-demo-user` and make every owned API operation derive identity from a verified server-side session.
+
+Starting HEAD: `a283256cbe97e769a84c64d80046f0129d3d854d` on synchronized `main`.
+
+Implementation:
+
+- Added `users`, `sessions`, and `app_meta` tables. Student OS users have random stable UUIDs; Telegram will be an external identity, never the primary key.
+- Added one-time legacy migration from `local-demo-user` rows to a stable internal development user, preserving lessons, deadlines, and preferences.
+- Added cryptographically strong opaque session and CSRF tokens. Only SHA-256 session-token digests are stored server-side.
+- Added session lookup, expiry, revocation, logout, and rotation on repeated development login. The browser receives an HttpOnly, SameSite=Lax cookie; production configuration adds `Secure`.
+- Replaced every runtime `LOCAL_USER` use in bootstrap, Student AI, lesson CRUD/import, deadline CRUD, and preferences with the authenticated session's internal user id.
+- Added CSRF validation to every state-changing authenticated endpoint. The frontend receives the CSRF value from its verified session and sends it as a header; it never supplies `user_id`.
+- Local auto-login is available only when `DEV_LOGIN_ENABLED=true` and is always disabled in `APP_ENV=production`. The default loaded configuration is fail-closed until the developer explicitly enables it.
+
+Security decisions:
+
+- Sessions are server-side and revocable; modifying the cookie produces no valid identity.
+- Login rotates away from any browser-provided cookie to prevent session fixation.
+- Missing, invalid, expired, and logged-out sessions receive 401. Missing or modified CSRF headers receive 403.
+- Every owned query continues to bind `user_id` in SQL. Cross-user reads return only the current user's bootstrap data; cross-user mutations return not-found.
+- The old literal `local-demo-user` remains only inside the bounded migration path, not request handling.
+
+Tests: 44 passed; Python compilation and bundled Node.js syntax validation passed.
+
+Attack checks:
+
+- Missing cookie, arbitrary cookie, expired session, logout reuse, fixation input, absent/modified CSRF, browser-supplied `user_id`, user A reading user B data, direct foreign lesson update, foreign deadline delete, and legacy migration idempotence.
+- Existing malformed input, duplicate submit, Unicode, schedule conflict, import atomicity, and deadline ownership regressions remain green.
+
+Changed files: `.env.example`, `README.md`, `app/auth.py`, `app/config.py`, `app/database.py`, `app/main.py`, `static/app.js`, auth and existing endpoint tests.
+
+Git commit: `0662405` (`Build secure user session foundation`).
+
+Pushed: YES, `main`.
+
+CI: push triggered; local suite green. Remote result will be rechecked at the next checkpoint.
+
+Known limitations: there is not yet a production login method, account recovery flow, session management UI, or Telegram identity table. A public deployment would therefore reject all application API access rather than silently enabling development login.
+
+External blocker: none for Telegram verification code and fixtures. Live Telegram use later requires bot credentials and a configured domain.
+
+Next: implement Telegram signature/freshness verification and external account-link mapping without touching the live bot database.
