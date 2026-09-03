@@ -135,6 +135,8 @@ class Database:
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     status TEXT NOT NULL CHECK(status IN ('reserved', 'committed', 'released')),
                     charged INTEGER NOT NULL CHECK(charged IN (0, 1)),
+                    input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(input_tokens >= 0),
+                    output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(output_tokens >= 0),
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -202,6 +204,18 @@ class Database:
             if "location" not in lesson_columns:
                 db.execute(
                     "ALTER TABLE lessons ADD COLUMN location TEXT NOT NULL DEFAULT ''"
+                )
+            reservation_columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(ai_credit_reservations)").fetchall()
+            }
+            if "input_tokens" not in reservation_columns:
+                db.execute(
+                    "ALTER TABLE ai_credit_reservations ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0"
+                )
+            if "output_tokens" not in reservation_columns:
+                db.execute(
+                    "ALTER TABLE ai_credit_reservations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0"
                 )
 
     @staticmethod
@@ -387,11 +401,16 @@ class Database:
             return cursor.rowcount == 1
 
     def record_event(self, user_id: str, event_name: str, source: str = "") -> None:
-        with self.connection() as db:
-            db.execute(
-                "INSERT OR IGNORE INTO product_events(user_id, event_name, source, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, event_name, source[:80], self._now()),
-            )
+        try:
+            with self.connection() as db:
+                db.execute(
+                    """INSERT OR IGNORE INTO product_events
+                    (user_id, event_name, source, created_at) VALUES (?, ?, ?, ?)""",
+                    (user_id, event_name, source[:80], self._now()),
+                )
+        except sqlite3.Error:
+            # Minimal analytics must never break a completed user operation.
+            return
 
     def record_feedback(
         self, user_id: str, kind: str, rating: str, message: str, request_id: str

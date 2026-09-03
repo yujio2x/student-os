@@ -16,7 +16,9 @@ class ReservationConflict(ValueError):
 class StudentAIEntitlementService(Protocol):
     def get_balance(self, user_id: str) -> dict: ...
     def reserve_credit(self, user_id: str, request_id: str) -> dict: ...
-    def commit_usage(self, request_id: str) -> dict: ...
+    def commit_usage(
+        self, request_id: str, input_tokens: int = 0, output_tokens: int = 0
+    ) -> dict: ...
     def release_reservation(self, request_id: str) -> dict: ...
 
 
@@ -90,13 +92,18 @@ class LocalEntitlementService:
             ).fetchone()
         return {**dict(row), "reused": False}
 
-    def commit_usage(self, request_id: str) -> dict:
-        return self._transition(request_id, "committed")
+    def commit_usage(
+        self, request_id: str, input_tokens: int = 0, output_tokens: int = 0
+    ) -> dict:
+        return self._transition(request_id, "committed", input_tokens, output_tokens)
 
     def release_reservation(self, request_id: str) -> dict:
         return self._transition(request_id, "released")
 
-    def _transition(self, request_id: str, target: str) -> dict:
+    def _transition(
+        self, request_id: str, target: str,
+        input_tokens: int = 0, output_tokens: int = 0,
+    ) -> dict:
         with self.database.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -113,10 +120,20 @@ class LocalEntitlementService:
                     "UPDATE ai_entitlements SET balance=balance+1, updated_at=? WHERE user_id=?",
                     (self.database._now(), row["user_id"]),
                 )
-            db.execute(
-                "UPDATE ai_credit_reservations SET status=?, updated_at=? WHERE request_id=?",
-                (target, self.database._now(), request_id),
-            )
+            if target == "committed":
+                safe_input = min(max(0, int(input_tokens)), 10_000_000)
+                safe_output = min(max(0, int(output_tokens)), 10_000_000)
+                db.execute(
+                    """UPDATE ai_credit_reservations
+                    SET status=?, input_tokens=?, output_tokens=?, updated_at=?
+                    WHERE request_id=?""",
+                    (target, safe_input, safe_output, self.database._now(), request_id),
+                )
+            else:
+                db.execute(
+                    "UPDATE ai_credit_reservations SET status=?, updated_at=? WHERE request_id=?",
+                    (target, self.database._now(), request_id),
+                )
             updated = db.execute(
                 "SELECT * FROM ai_credit_reservations WHERE request_id=?", (request_id,)
             ).fetchone()

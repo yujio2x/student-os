@@ -61,6 +61,7 @@ py -3.12 -m venv .venv
 - `tests/` — проверки критического пользовательского пути и нестандартных сценариев;
 - `docs/DEVLOG.md` — подробный технический источник истины;
 - `docs/TELEGRAM_INTEGRATION.md` — направление интеграции Telegram, кредитов и облачного резервного копирования.
+- `docs/STUDENT_AI_ARCHITECTURE.md` — mapping общего AI engine, photo/ledger compatibility и безопасный rollout.
 - `docs/DEPLOYMENT.md` — fail-closed production-конфигурация, persistent storage и staging checklist.
 
 ## Конфигурация

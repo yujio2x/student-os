@@ -388,10 +388,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ReservationConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         try:
-            result = app.state.study.analyze(
+            study_result = app.state.study.analyze(
                 payload.assignment, payload.subject, payload.title
-            ).to_dict()
-            app.state.entitlements.commit_usage(payload.request_id)
+            )
+            result = study_result.to_dict()
+            input_tokens, output_tokens = study_result.usage()
+            app.state.entitlements.commit_usage(
+                payload.request_id, input_tokens, output_tokens
+            )
             database.record_event(user_id, "student_ai_used")
             return result
         except Exception as exc:

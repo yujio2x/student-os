@@ -56,9 +56,17 @@ class StudyResult:
     pitfalls: list[str]
     suggested_due_at: str | None
     mode: str
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        result = asdict(self)
+        result.pop("input_tokens")
+        result.pop("output_tokens")
+        return result
+
+    def usage(self) -> tuple[int, int]:
+        return self.input_tokens, self.output_tokens
 
 
 class StudyService:
@@ -69,24 +77,19 @@ class StudyService:
     def analyze(self, assignment: str, subject: str = "", title: str = "") -> StudyResult:
         if self.client is None:
             return self._demo_result(assignment, subject, title)
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=STUDY_INSTRUCTIONS,
-            input=assignment,
-            max_output_tokens=2400,
-            reasoning={"effort": "low"},
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "student_os_study_result",
-                    "schema": STUDY_SCHEMA,
-                    "strict": True,
-                },
-                "verbosity": "high",
-            },
-            store=False,
+        context = []
+        if subject.strip():
+            context.append(f"Предмет: {subject.strip()}")
+        if title.strip():
+            context.append(f"Название задания: {title.strip()}")
+        context.append(f"Условие задания:\n{assignment}")
+        payload_text, input_tokens, output_tokens = self._complete_structured_response(
+            [{
+                "role": "user",
+                "content": [{"type": "input_text", "text": "\n\n".join(context)}],
+            }]
         )
-        payload = json.loads(response.output_text)
+        payload = json.loads(payload_text)
         return StudyResult(
             subject=str(payload.get("subject") or subject or "Учебное задание")[:120],
             assignment_title=str(payload.get("assignment_title") or title or "Новое задание")[:160],
@@ -99,7 +102,71 @@ class StudyService:
             pitfalls=[str(x) for x in payload.get("pitfalls", [])][:6],
             suggested_due_at=self._valid_due_at(payload.get("suggested_due_at")),
             mode="live",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
+
+    @staticmethod
+    def _incomplete_reason(response) -> str | None:
+        details = getattr(response, "incomplete_details", None)
+        if isinstance(details, dict):
+            return details.get("reason")
+        return getattr(details, "reason", None)
+
+    @staticmethod
+    def _output_items(response) -> list:
+        items = []
+        for item in getattr(response, "output", []) or []:
+            items.append(
+                item.model_dump(exclude_none=True) if hasattr(item, "model_dump") else item
+            )
+        return items
+
+    def _complete_structured_response(self, input_items: list) -> tuple[str, int, int]:
+        """Continue only output-limit truncations, with a hard four-response bound."""
+        history = list(input_items)
+        total_input_tokens = 0
+        total_output_tokens = 0
+        for _ in range(4):
+            response = self.client.responses.create(
+                model=self.model,
+                instructions=STUDY_INSTRUCTIONS,
+                input=history,
+                max_output_tokens=2400,
+                reasoning={"effort": "low"},
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "student_os_study_result",
+                        "schema": STUDY_SCHEMA,
+                        "strict": True,
+                    },
+                    "verbosity": "high",
+                },
+                store=False,
+            )
+            usage = getattr(response, "usage", None)
+            if usage:
+                total_input_tokens += int(usage.input_tokens)
+                total_output_tokens += int(usage.output_tokens)
+            if not (
+                getattr(response, "status", "completed") == "incomplete"
+                and self._incomplete_reason(response) == "max_output_tokens"
+            ):
+                return response.output_text, total_input_tokens, total_output_tokens
+            history.extend(self._output_items(response))
+            history.append({
+                "role": "user",
+                "content": [{
+                    "type": "input_text",
+                    "text": (
+                        "Предыдущий structured output оборвался по лимиту. Используя весь "
+                        "контекст выше, верни заново один полный валидный JSON-объект по "
+                        "исходной схеме и обязательно заверши все разделы."
+                    ),
+                }],
+            })
+        raise RuntimeError("Student AI response remained incomplete after four responses")
 
     @staticmethod
     def _valid_due_at(value: object) -> str | None:

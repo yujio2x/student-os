@@ -30,7 +30,9 @@ Patterns deliberately not copied:
 
 The local implementation uses `BEGIN IMMEDIATE`, binds each request ID to one internal user, prevents negative balances, makes reserve/commit/release retries idempotent, and refunds only an uncommitted charged reservation. Unlimited accounts reserve without decrementing.
 
-Its source is explicitly `local-unconnected`. It is not yet the payment source of truth and therefore is not wired to block Student AI. Schedule, Deadlines, Today, Calendar, Settings, export, and other organization features never call this service.
+Its default source is explicitly `local-unconnected`. Student AI now fails closed unless the current internal user has a verified Telegram link and the entitlement source reports connected. A connected adapter follows reserve → engine → token-accounted commit, with release on engine failure. Schedule, Deadlines, Today, Calendar, Settings, export, and other organization features never call this service.
+
+The current `local` source is an isolated development/staging fixture, not the payment source of truth. Reusing a processed request ID is rejected before a second engine call; a future authoritative adapter may instead return a safely cached response.
 
 ## Safe live bridge plan
 
@@ -41,3 +43,5 @@ Its source is explicitly `local-unconnected`. It is not yet the payment source o
 5. Enable enforcement only after mismatch, retry, failure-refund, and concurrency tests pass against that adapter.
 
 External blockers: production bot/client credentials, registered domain/redirect URL, an approved mapping/migration window, and a staging copy of the live ledger. None justify modifying live data now.
+
+The detailed old-bot → shared domain → Telegram/web mapping, photo compatibility fixtures, rollout stages, and rollback procedure are in `docs/STUDENT_AI_ARCHITECTURE.md`.

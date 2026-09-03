@@ -32,6 +32,10 @@ class SpyStudy:
                     "suggested_due_at": None, "mode": "demo",
                 }
 
+            @staticmethod
+            def usage() -> tuple[int, int]:
+                return 12, 34
+
         return Result()
 
 
@@ -103,6 +107,11 @@ def test_linked_connected_user_reserves_commits_and_blocks_duplicate(tmp_path: P
             assert db.execute(
                 "SELECT status FROM ai_credit_reservations WHERE request_id='same-request'"
             ).fetchone()[0] == "committed"
+            usage = db.execute(
+                """SELECT input_tokens, output_tokens FROM ai_credit_reservations
+                WHERE request_id='same-request'"""
+            ).fetchone()
+            assert tuple(usage) == (12, 34)
     finally:
         client.__exit__(None, None, None)
 

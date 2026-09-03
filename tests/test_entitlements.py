@@ -29,8 +29,10 @@ def test_reserve_commit_and_retry_are_idempotent(tmp_path: Path) -> None:
     retry = service.reserve_credit(user_id, "request-1")
     assert first["request_id"] == retry["request_id"]
     assert service.get_balance(user_id)["balance"] == 1
-    assert service.commit_usage("request-1")["status"] == "committed"
-    assert service.commit_usage("request-1")["status"] == "committed"
+    committed = service.commit_usage("request-1", 123, 456)
+    assert committed["status"] == "committed"
+    assert (committed["input_tokens"], committed["output_tokens"]) == (123, 456)
+    assert service.commit_usage("request-1", 999, 999)["status"] == "committed"
     assert service.get_balance(user_id)["balance"] == 1
 
 
@@ -75,3 +77,23 @@ def test_concurrent_reserve_cannot_double_spend(tmp_path: Path) -> None:
 
     assert sorted(results) == ["insufficient", "reserved"]
     assert service.get_balance(user_id)["balance"] == 0
+
+
+def test_legacy_reservations_gain_token_accounting_columns(tmp_path: Path) -> None:
+    database = Database(tmp_path / "legacy-reservation.db")
+    database.initialize()
+    with database.connection() as db:
+        db.execute("DROP TABLE ai_credit_reservations")
+        db.execute(
+            """CREATE TABLE ai_credit_reservations (
+            request_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, status TEXT NOT NULL,
+            charged INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"""
+        )
+
+    database.initialize()
+
+    with database.connection() as db:
+        columns = {row["name"] for row in db.execute(
+            "PRAGMA table_info(ai_credit_reservations)"
+        ).fetchall()}
+    assert {"input_tokens", "output_tokens"}.issubset(columns)
