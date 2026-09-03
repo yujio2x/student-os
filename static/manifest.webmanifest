@@ -1,0 +1,19 @@
+{
+  "name": "Student OS",
+  "short_name": "Student OS",
+  "description": "Расписание, Student AI и дедлайны в одном рабочем пространстве.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#f6f5f1",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ from app.database import (
     LessonConflictError,
 )
 from app.entitlements import LocalEntitlementService
+from app.export_service import ExportTooLargeError, OwnedDataExportService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
 
@@ -171,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         config.telegram_bot_token, config.telegram_auth_max_age_seconds
     )
     entitlements = LocalEntitlementService(database, config.entitlement_source)
+    owned_export = OwnedDataExportService(database)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -187,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessions = sessions
     app.state.telegram = telegram
     app.state.entitlements = entitlements
+    app.state.owned_export = owned_export
 
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
@@ -295,7 +298,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"status": "ok", "stage": "PROTOTYPE"}
+        return {"status": "ok", "stage": "BETA_FOUNDATION"}
 
     @app.get("/api/bootstrap")
     def bootstrap(session: dict = Depends(current_session)) -> dict:
@@ -315,6 +318,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "student_ai_entitlement": entitlements.get_balance(user_id),
         }
+
+    @app.get("/api/export")
+    def export_owned_data(session: dict = Depends(current_session)) -> Response:
+        try:
+            content = app.state.owned_export.render(session["user_id"])
+        except ExportTooLargeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        return Response(
+            content=content,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="student-os-export.json"'},
+        )
 
     @app.post("/api/feedback", status_code=201)
     def submit_feedback(payload: FeedbackInput, session: dict = Depends(csrf_session)) -> dict:
