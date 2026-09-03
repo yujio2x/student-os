@@ -311,3 +311,40 @@ purpose: complete owned deadline CRUD, unified manual/AI editing, Today/Calendar
 tests: 38 passed
 attack checks: input bounds, date semantics, duplicate submit, missing/foreign rows, immutable origin, parameterized SQL, safe DOM rendering
 known limitations: date-only API input uses midnight; visual browser QA was not rerun in this constrained checkpoint
+
+## 2026-09-03 - Beta marathon factual audit and regression closure
+
+Goal: verify the actual repository state and close the previous deadline checkpoint debts before auth work.
+
+Starting HEAD: `ef7e5b9115b46360c53f6ffb6c7bde1f9fb92fc0` on `main`, identical locally, on `origin/main`, and on GitHub. The latest GitHub Actions run completed successfully.
+
+Implementation:
+
+- Corrected `README.md`: full deadline create/open/edit/delete/complete/reopen is now documented and no longer listed as missing.
+- Located the bundled Node.js runtime and validated `static/app.js` syntax successfully.
+- Ran desktop browser QA at 1440×1000 on a separate temporary SQLite database. Manual create, Today open, edit, complete, Calendar open, reopen, Unicode, and the delete-confirmation boundary worked. The temporary database was removed after QA.
+- Verified desktop Settings geometry: Appearance and Schedule share the left column; Student AI and Data share the right column.
+- Ran mobile QA at 390×844: one-column Settings order was correct, bottom navigation and menu were active, the page had no horizontal overflow, and the deadline dialog fit the viewport with vertical scrolling.
+
+Security decisions:
+
+- Browser QA used an isolated temporary database and did not touch the user's normal local data.
+- Delete confirmation was opened but not accepted through browser automation; deletion behavior remains covered by the automated API/database tests.
+
+Tests: 38 passed; Python compilation and JavaScript syntax validation passed.
+
+Attack checks: duplicate submit, Unicode, past/date-only deadlines, missing and foreign rows remain covered; browser console showed no new application errors.
+
+Changed files: `README.md`, `docs/DEVLOG.md`.
+
+Git commit: `fb02b14` (`Correct deadline documentation`).
+
+Pushed: YES, `main`.
+
+CI: previous actual HEAD green; this documentation-only checkpoint will be verified after push.
+
+Known limitations: authentication and production user isolation are still absent at this point in the marathon.
+
+External blocker: none for the next internal-user/session foundation.
+
+Next: replace `local-demo-user` with a verified server-side session identity and prove cross-user isolation.
