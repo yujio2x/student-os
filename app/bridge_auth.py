@@ -13,6 +13,12 @@ class BridgeAuthError(ValueError):
     pass
 
 
+def body_limit(path):
+    return 9 * 1024 * 1024 if path in {
+        "/api/internal/v1/study/photo/quote", "/api/internal/v1/study/photo/confirm"
+    } else 64 * 1024
+
+
 class BridgeRateLimitError(BridgeAuthError):
     pass
 
@@ -32,7 +38,7 @@ class BridgeBodyLimitMiddleware:
             if message["type"] == "http.disconnect":
                 return
             chunk = message.get("body", b"")
-            if len(body) + len(chunk) > 64 * 1024:
+            if len(body) + len(chunk) > body_limit(scope.get("path", "")):
                 await send({"type": "http.response.start", "status": 413,
                             "headers": [(b"content-type", b"application/json")]})
                 await send({"type": "http.response.body", "body": b'{"detail":"Bridge payload too large"}'})
@@ -76,7 +82,7 @@ class BridgeAuthenticator:
                path: str = "/api/internal/v1/identity/resolve") -> None:
         if not self.secret:
             raise BridgeAuthError("bridge is not configured")
-        if len(body) > 64 * 1024:
+        if len(body) > body_limit(path):
             raise BridgeAuthError("bridge payload too large")
         if (not timestamp.isascii() or not timestamp.isdigit() or len(timestamp) > 12
                 or not nonce.isascii() or not (16 <= len(nonce) <= 128)):

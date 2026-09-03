@@ -529,13 +529,16 @@ class Database:
                 """SELECT COALESCE(SUM(balance), 0) credits,
                 COALESCE(SUM(unlimited), 0) unlimited_users FROM ai_entitlements"""
             ).fetchone()
+            photo_counts = (0, 0, 0)
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_requests'").fetchone():
+                photo_counts = db.execute("SELECT COUNT(*), SUM(status='completed'), SUM(status='failed') FROM photo_requests").fetchone()
         return {
             "total_users": int(users["total"] or 0),
             "recent_users_7d": int(users["recent"] or 0),
             "student_ai_uses": events.get("student_ai_used", 0),
-            "student_ai_requests": int(reservations["total"] or 0),
-            "student_ai_successful": int(reservations["successful"] or 0),
-            "student_ai_failed": int(reservations["failed"] or 0),
+            "student_ai_requests": int(reservations["total"] or 0) + int(photo_counts[0] or 0),
+            "student_ai_successful": int(reservations["successful"] or 0) + int(photo_counts[1] or 0),
+            "student_ai_failed": int(reservations["failed"] or 0) + int(photo_counts[2] or 0),
             "stars_payments": int(payments["total"] or 0),
             "stars_received": int(payments["stars"] or 0),
             "credits_outstanding": int(ledger["credits"] or 0),
@@ -602,6 +605,12 @@ class Database:
                 (user_id,),
             ).fetchone()
             exact["ai_totals"] = dict(totals)
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_requests'").fetchone():
+                photo_totals = db.execute("""SELECT COUNT(*) requests, SUM(status='completed') successful,
+                    SUM(input_tokens) input_tokens, SUM(output_tokens) output_tokens
+                    FROM photo_requests WHERE user_id=?""", (user_id,)).fetchone()
+                for key in exact["ai_totals"]:
+                    exact["ai_totals"][key] += int(photo_totals[key] or 0)
         return exact
 
     def admin_feedback(self, limit: int, offset: int) -> dict:

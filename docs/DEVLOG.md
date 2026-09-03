@@ -775,3 +775,52 @@ example, run commands and docs. Known limitations: RS256 only, no automated acco
 merge; real BotFather domain/credentials and staging login required. Existing photo/restore
 backlog remains. Rollback: remove OIDC env; legacy HMAC boundary remains; no DB deletion.
 Next: shared photo domain after this tested checkpoint, then restore and final QA.
+
+## 2026-09-04 — Shared photo domain and adapters
+
+Goal: preserve old photo setup semantics while using one Core ledger/engine.
+Starting HEAD: Core `a5a3818`, bot `2fbcc37`. OIDC checkpoint pushed; live credentials unused.
+Architecture: adapter-independent PhotoService with expiring quotes/session/request tables;
+Core owns recognition, task selection, setup charge and token accounting. Both adapters
+call it. Legacy bot path remains unchanged with bridge OFF.
+
+Implementation: PNG/JPEG MIME/signature/decoder checks, 6 MiB and 16M-pixel bounds,
+animation/corruption rejection; no filenames used as paths. Five-minute quote binds user,
+image digest and entitlement source. Explicit confirm atomically claims quote, reserves
+one shared trial or five credits, recognizes tasks, then commits session + usage in one
+transaction; failure releases reservation. A changed source never silently becomes paid.
+Maximum 30 recognized tasks/24K characters; no raw photo persistence. Tasks logically
+expire at 24h and are purged on access/startup and by a 60-second cleanup worker.
+Free follow-ups have stable request IDs, duplicate rejection and 20/hour ceiling.
+Photo request/token counts feed existing admin totals without revealing task content.
+
+Web: upload → quote → confirm → selectable task list → canonical result/defense.
+Latest session restores after reload. Telegram: same quote/confirm flow, one/all selection
+buttons, shared defense, five-minute in-memory raw-photo expiration; session recovery after
+restart; stale buttons cannot target a newer photo. Regular text and legacy mode preserved.
+Bridge body limit is 9 MiB only for the two base64-photo operations; all other endpoints
+retain 64 KiB and path-bound HMAC. No raw image/auth payload is logged.
+
+Tests: focused domain cases cover validation-before-AI, trial, paid refund, changed quote,
+concurrent/double confirm, Unicode/unreadable tasks, selection, IDOR, expiry and purge.
+Cross-project test proves Telegram setup followed by Web and Telegram selections without
+extra debit. Bot suite 71 passed. Python/JS syntax and diff checks pass; full Core result
+recorded at the checkpoint. Browser uses explicit `tests/qa_photo_app.py` fixture only.
+
+Browser QA: 1440 desktop quote/confirmation/list/result/defense; 390×844 task checkboxes
+and actions fit with scrollWidth 375; reload recovers the same three-task session. Synthetic
+white PNG/deterministic engine, not a live OCR quality test or paid request. QA DB isolated.
+
+Known limitations: free follow-up failure does not refund a successfully completed recognition
+setup; UI quotes explain that setup buys the recognized-photo session. Process-crashed
+reservations still require operator recovery policy. Selection is one/all in Telegram and
+arbitrary checkboxes in Web; natural-language photo follow-ups are not auto-routed yet.
+Raw upload is request-scoped/spooled temporarily by the framework; no application file store.
+Rollback: bridge OFF for bot; unset AI key disables Web photo; retain Core ledger/outbox.
+No live bot restart, real payment, legacy DB write or production deploy occurred.
+Next: safe JSON restore, final security/browser/deployment readiness pass.
+
+Photo checkpoint verification: full Core suite **92 passed**, bot **71 passed**.
+Bot `cb83d2d` pushed; Core CI pins this exact compatible revision. Both runtime feature
+flags remain unchanged. Temporary synthetic PNG removed after browser QA; isolated
+ignored QA database retained only for reproducibility. No user-provided asset removed.

@@ -85,7 +85,8 @@ class UnifiedEntitlementService:
             ).fetchone()
         return self._account(row)
 
-    def reserve_credit(self, user_id: str, request_id: str, amount: int = 1) -> dict:
+    def reserve_credit(self, user_id: str, request_id: str, amount: int = 1,
+                       expected_source: str | None = None) -> dict:
         if not request_id or len(request_id) > 128:
             raise ValueError("invalid request_id")
         if not 1 <= int(amount) <= 100:
@@ -107,6 +108,11 @@ class UnifiedEntitlementService:
                 (user_id,),
             ).fetchone()
             charged = 0
+            current_source = "unlimited" if account["unlimited"] else (
+                "trial" if amount == 1 and account["free_trial_available"] else "paid"
+            )
+            if expected_source is not None and current_source != expected_source:
+                raise ReservationConflict("Entitlement changed; confirm a new quote")
             if account["unlimited"]:
                 access_source = "unlimited"
             elif amount == 1 and account["free_trial_available"]:

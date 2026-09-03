@@ -12,6 +12,7 @@ async function showLogin(){
   const dialog=document.querySelector("#loginDialog");if(!dialog.open)dialog.showModal();
 }
 function renderAccountActions(){
+  if(typeof renderPhotoAccess==="function")renderPhotoAccess();
   const linked=Boolean(state.telegram?.identity),entitlement=state.student_ai_entitlement;
   const connect=document.querySelector("#connectTelegram"),buy=document.querySelector("#accountBuy");
   connect.hidden=linked;connect.disabled=!state.telegram?.login_available;

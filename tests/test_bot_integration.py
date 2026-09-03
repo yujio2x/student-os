@@ -116,3 +116,31 @@ def test_real_client_outbox_outage_duplicate_and_payment_validation(integration)
         with pytest.raises(error):
             bot.record_payment({**payload, **invalid, "charge_id": "bad"})
     assert outbox.pending() == []
+
+
+def test_photo_setup_shared_between_bot_and_web(integration):
+    from test_photo_service import Engine, image
+    app, web, bot, _, _, error = integration
+    photo_engine = Engine()
+    photo_engine.client = object()
+    app.state.photo.engine = photo_engine
+    identity = telegram()
+    user = bot.resolve_user(identity)["user"]["id"]
+    headers = web_session(app, web, user)
+    data = image()
+    quote = bot.quote_photo(identity, data, "image/png")
+    assert quote["uses_trial"]
+    session = bot.confirm_photo(identity, data, "image/png", quote["quote_id"])
+    assert photo_engine.calls == 1
+    assert not web.get("/api/student-ai/entitlement").json()["free_trial_available"]
+    response = web.post("/api/study/photo/answer", json={"session_id": session["session_id"],
+        "selection": [0, 1], "request_id": "web-photo-shared"}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["how_to_defend"]
+    answer = bot.answer_photo(identity, session["session_id"], [2], "bot-photo-shared")
+    assert answer["checks"]
+    assert bot.get_entitlement(identity)["entitlement"]["balance"] == 0
+    with pytest.raises(error):
+        bot.confirm_photo(identity, data, "image/png", quote["quote_id"])
+    assert web.post("/api/study/photo/quote", files={"file": ("fake.png", b"not-png", "image/png")}, headers=headers).status_code == 422
+    assert web.post("/api/study/photo/quote", files={"file": ("safe.png", data, "image/png")}).status_code == 403

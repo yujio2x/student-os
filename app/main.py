@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import secrets
+import asyncio
+import base64
+import binascii
+from contextlib import suppress
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -26,6 +30,7 @@ from app.export_service import ExportTooLargeError, OwnedDataExportService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
 from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
 from app.telegram_oidc import LOGIN_COOKIE, OIDCError, TelegramOIDC
+from app.photo_service import PhotoService, PhotoError, MAX_PHOTO_BYTES
 
 
 ALLOWED_FIELDS = {"room", "teacher", "lesson_type", "group_name", "notes"}
@@ -157,6 +162,25 @@ class BridgePaymentRequest(BridgeIdentityRequest):
     stars_paid: int = Field(gt=0, le=1_000_000)
 
 
+class BridgePhotoRequest(BridgeIdentityRequest):
+    image_b64: str = Field(max_length=8_388_608)
+    mime: str = Field(pattern="^image/(png|jpeg)$")
+    quote_id: str = Field(default="", max_length=64)
+
+
+class PhotoSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(min_length=16, max_length=64)
+    selection: list[int] = Field(min_length=1, max_length=30)
+    request_id: str = Field(min_length=8, max_length=128)
+
+
+class BridgePhotoSelection(BridgeIdentityRequest):
+    session_id: str = Field(min_length=16, max_length=64)
+    selection: list[int] = Field(min_length=1, max_length=30)
+    request_id: str = Field(min_length=8, max_length=128)
+
+
 class PreferencesUpdate(BaseModel):
     theme: str = Field(pattern="^(light|dark)$")
     schedule_view: str = Field(pattern="^(week|day)$")
@@ -224,15 +248,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     owned_export = OwnedDataExportService(database)
     oidc = TelegramOIDC(database, config)
+    photo = PhotoService(database, entitlements, study)
+
+    async def cleanup_photos():
+        while True:
+            await asyncio.to_thread(photo.cleanup)
+            await asyncio.sleep(60)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         database.initialize()
         oidc.initialize()
+        photo.initialize()
         if config.environment != "production" and config.dev_login_enabled:
             local_user = database.ensure_local_user()
             database.seed_demo(local_user["id"])
-        yield
+        cleanup_task = asyncio.create_task(cleanup_photos())
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
 
     app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
     app.add_middleware(BridgeBodyLimitMiddleware)
@@ -245,6 +282,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.bridge = bridge
     app.state.owned_export = owned_export
     app.state.oidc = oidc
+    app.state.photo = photo
 
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
@@ -509,6 +547,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "deadlines": database.deadlines(user_id),
             "preferences": database.preferences(user_id),
             "ai_mode": "live" if study.client else "demo",
+            "photo_available": bool(study.client),
             "session": {
                 "user": {"id": user_id, "display_name": session["display_name"], "role": session["role"]},
                 "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
@@ -624,6 +663,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "payment": payment,
             "entitlement": app.state.entitlements.get_balance(user["id"]),
         }
+
+    def photo_operation(operation, *args):
+        try:
+            return operation(*args)
+        except InsufficientCredits:
+            raise HTTPException(status_code=402, detail="Для фото нужно 5 credits. Купить попытки можно в Telegram") from None
+        except ReservationConflict:
+            raise HTTPException(status_code=409, detail="Доступ изменился. Получите новую цену и подтвердите снова") from None
+        except PhotoError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        except Exception:
+            raise HTTPException(status_code=502, detail="Не удалось обработать фото. Обновите баланс; при расхождении обратитесь в поддержку") from None
+
+    def require_photo_user(session):
+        if database.telegram_identity(session["user_id"]) is None:
+            raise HTTPException(status_code=403, detail="Войдите через Telegram")
+        if not photo.engine.client:
+            raise HTTPException(status_code=503, detail="Распознавание фото пока не настроено")
+        return session["user_id"]
+
+    @app.post("/api/study/photo/quote")
+    async def photo_quote(file: UploadFile = File(...), session: dict = Depends(csrf_session)):
+        user_id = require_photo_user(session)
+        data = await file.read(MAX_PHOTO_BYTES + 1)
+        return await asyncio.to_thread(photo_operation, photo.quote, user_id, data, file.content_type)
+
+    @app.get("/api/study/photo/session")
+    def latest_photo(session: dict = Depends(current_session)):
+        return {"session": photo.latest(require_photo_user(session))}
+
+    @app.post("/api/study/photo/confirm")
+    async def photo_confirm(file: UploadFile = File(...), quote_id: str = Form(..., max_length=64),
+                            session: dict = Depends(csrf_session)):
+        user_id = require_photo_user(session)
+        data = await file.read(MAX_PHOTO_BYTES + 1)
+        return await asyncio.to_thread(photo_operation, photo.confirm, user_id, quote_id, data, file.content_type)
+
+    @app.post("/api/study/photo/answer")
+    def photo_answer(payload: PhotoSelection, session: dict = Depends(csrf_session)):
+        user_id = require_photo_user(session)
+        return photo_operation(photo.answer, user_id, payload.session_id, payload.selection, payload.request_id)
+
+    def bridge_photo_data(payload):
+        if not photo.engine.client:
+            raise HTTPException(status_code=503, detail="Photo engine unavailable")
+        try:
+            return base64.b64decode(payload.image_b64, validate=True)
+        except (ValueError, binascii.Error):
+            raise HTTPException(status_code=422, detail="Invalid image encoding") from None
+
+    @app.post("/api/internal/v1/study/photo/quote")
+    def bridge_photo_quote(payload: BridgePhotoRequest, _: None = Depends(bridge_request)):
+        data = bridge_photo_data(payload)
+        user = resolve_bridge_user(payload.telegram)
+        return photo_operation(photo.quote, user["id"], data, payload.mime)
+
+    @app.post("/api/internal/v1/study/photo/session")
+    def bridge_latest_photo(payload: BridgeIdentityRequest, _: None = Depends(bridge_request)):
+        user = resolve_bridge_user(payload.telegram)
+        return {"session": photo.latest(user["id"])}
+
+    @app.post("/api/internal/v1/study/photo/confirm")
+    def bridge_photo_confirm(payload: BridgePhotoRequest, _: None = Depends(bridge_request)):
+        data = bridge_photo_data(payload)
+        user = resolve_bridge_user(payload.telegram)
+        return photo_operation(photo.confirm, user["id"], payload.quote_id, data, payload.mime)
+
+    @app.post("/api/internal/v1/study/photo/answer")
+    def bridge_photo_answer(payload: BridgePhotoSelection, _: None = Depends(bridge_request)):
+        user = resolve_bridge_user(payload.telegram)
+        return photo_operation(photo.answer, user["id"], payload.session_id, payload.selection, payload.request_id)
 
     @app.post("/api/lessons", status_code=201)
     def create_lesson(payload: LessonInput, session: dict = Depends(csrf_session)) -> dict:

@@ -1,6 +1,13 @@
 # Student OS
 
-Статус: **BETA FOUNDATION** — локальный MVP с серверной identity/session-основой; production login ещё не подключён.
+Статус: **BETA FOUNDATION** — общий Core для Web и Telegram, OIDC-вход и shared photo flow реализованы; реальный production rollout ещё не выполнен.
+
+Новые проверенные возможности: default-OFF Telegram adapter с durable Stars outbox,
+единые trial/credits/unlimited, OIDC Authorization Code + PKCE, фото quote → explicit
+confirm → выбор задач → общий разбор и защита. Фото использует общий trial либо 5
+credits; распознанный контекст доступен 24 часа. Live OCR/Telegram/Stars acceptance
+требует отдельной staging-проверки. Настройка: [Telegram](docs/TELEGRAM_INTEGRATION.md)
+и [bridge](docs/STUDENT_AI_BOT_BRIDGE.md).
 
 Student OS — единое веб-пространство для повседневной студенческой жизни. Приложение связывает управляемое расписание, безопасный импорт, разбор задания в Student AI, обязательную подготовку к защите, редактируемые дедлайны и календарь.
 

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: yujio2x/student-ai-bot
-          ref: 2fbcc37db89d047627578108ccf7269756eb1480
+          ref: cb83d2dd10fcc24deb36a8633b1608bd2465dfca
           path: .integration-bot
           persist-credentials: false
       - run: python -m pytest tests -q

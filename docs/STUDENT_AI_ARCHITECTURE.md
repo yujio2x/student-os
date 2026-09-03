@@ -29,6 +29,13 @@ This intentionally does not mirror a long Telegram message. The JSON Schema is a
 
 ## Photo compatibility boundary
 
+Update 2026-09-04: the boundary below is now implemented in `PhotoService` and both
+adapters. Quotes bind the current source; setup uses one shared trial or five credits.
+The canonical engine recognizes bounded task arrays, then uses the existing structured
+analysis/defense contract for selections. Raw images are not persisted. Normalized text
+expires at 24 hours; periodic cleanup removes expired rows. This supersedes the earlier
+pricing blocker and disabled-photo status, not the need for live OCR acceptance QA.
+
 Before enabling the currently disabled photo/file input, add a service contract with three operations:
 
 1. Validate MIME, signature, decoded dimensions, and a bounded byte size before any AI call.
