@@ -477,3 +477,55 @@ Known limitations: no live payment/ledger connection, production OIDC UI, richer
 External blocker: live admin credit control remains intentionally disabled until an authoritative ledger adapter and migration are approved.
 
 Next: versioned owned-data export, installable PWA shell without authenticated API caching, production/deployment contract, then a consolidated security attack pass.
+
+## 2026-09-03 - Owned-data export, safe PWA, and deployment foundation
+
+Goal: complete the beta-foundation marathon with a useful user-owned backup boundary, installable mobile shell, deployment contract, and a consolidated attack pass without starting production deployment.
+
+Starting HEAD: `772d1f5` on synchronized `main`; admin/feedback feature CI was green.
+
+Implementation:
+
+- Added `OwnedDataExportService` and authenticated `GET /api/export`. The UTF-8 JSON contract is versioned and contains only preferences, lessons, and deadlines owned by the verified session user.
+- Removed `user_id` from every exported object. Sessions, CSRF, Telegram identity, credentials, feedback, analytics, entitlements, and admin/audit records are outside the format by design.
+- Bounded a single export to 10,000 lesson/deadline records and 5 MiB serialized output; overflow fails with 413 instead of streaming an unbounded response.
+- Added a real Settings download action. Restore/replace remains an honest future feature with a documented preview, validation, explicit confirmation, and atomic transaction contract.
+- Added a Russian PWA manifest, standalone metadata, vector maskable icon, and service worker. It precaches only the public HTML/CSS/JS/manifest/icon shell and explicitly bypasses `/api/*`, `/admin*`, cross-origin, and non-GET requests.
+- Added a Procfile-compatible ASGI start command, `BETA_FOUNDATION` health stage, and `docs/DEPLOYMENT.md` covering persistent SQLite storage, HTTPS, secrets, fail-closed login, and staging checks.
+
+Security and privacy decisions:
+
+- Export identity comes only from the server-side session; there is no request `user_id` or foreign-record selector.
+- Keeping stable lesson/deadline record IDs supports a future restore preview, while the absence of owner IDs prevents importing another account identity.
+- The service worker deliberately provides no offline authenticated data or background sync. A shell can open offline, but schedules/deadlines must be loaded from the authenticated API online.
+- Production remains fail-closed without Telegram login configuration. No provider, paid resource, database, domain, or deployment was created.
+
+Tests: 60 passed; Python compilation, application/admin/service-worker JavaScript syntax, and diff checks passed. Feature CI for `de7e643` completed successfully.
+
+Attack checks:
+
+- Missing session export, cross-user deadline isolation, sequential foreign record exclusion, Unicode round-trip, and absence of internal user IDs/API keys/session/CSRF/Telegram/private foreign text.
+- Artificial record-count and serialized-byte overflow both return 413.
+- PWA contract tests assert install metadata and explicit `/api` plus `/admin` cache bypass.
+- Existing auth fixation/logout/expiry, CSRF, Telegram signature/freshness/replay, ownership, admin denial/tampering, credit concurrency/idempotence, XSS-shaped feedback, malformed input, duplicate submit, and Unicode regressions remain green in the full suite.
+
+Browser QA:
+
+- Desktop Settings exposes the export in the existing Data card; clicking it completed a real authenticated download and showed `Экспорт готов`.
+- Mobile 390×844 preserved the one-column card order, fixed checkbox alignment, and had no horizontal overflow (`scrollWidth` 375 at a 390 px viewport).
+
+Changed files: export service/API/tests, Settings download UI, manifest/icon/service worker, README, Procfile, and deployment documentation.
+
+Git commit: `de7e643` (`Add owned export and safe PWA foundation`).
+
+Pushed: YES, `main`.
+
+CI: GREEN for `de7e643`.
+
+Known limitations: JSON restore is not implemented; the SVG manifest icon should receive PNG fallbacks before broad device-matrix release; PWA has no offline user data; SQLite needs one persistent-volume web instance until a reviewed multi-instance database migration exists.
+
+External blockers/manual steps: configure Telegram production credentials/domain or OIDC redirect, set `ADMIN_TELEGRAM_ID`, select and mount persistent storage, connect a reviewed authoritative Student AI ledger adapter, and perform staging device QA before sharing a public link.
+
+Deliberately omitted: production deploy, paid resources, live bot database writes, cloud sync/restore, payments, offline sync, Contacts, Knowledge Base, OCR, native apps, recurring calendar, and redesign.
+
+Next: stop at this stable foundation. The next scope should start from production Telegram UI/account recovery plus a reviewed entitlement adapter and staging deployment, not from additional unrelated features.
