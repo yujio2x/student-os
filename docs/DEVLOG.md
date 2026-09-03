@@ -435,3 +435,45 @@ Known limitations: no live OIDC/widget UI, account recovery, bot-ledger adapter,
 External blocker: Telegram Client ID/Secret or bot token, BotFather allowed domain/redirect configuration, approved production domain, and a staging copy/reviewed adapter for the bot ledger.
 
 Next: build the deny-by-default web admin shell, role policy, privacy-minimal overview/users, safe credit controls, feedback, and admin audit log.
+
+## 2026-09-03 - Secure admin control center and low-contact feedback
+
+Goal: give the product owner a compact operational web panel while denying ordinary users and avoiding surveillance-oriented access to private student content.
+
+Starting HEAD: `39cb57e` on synchronized `main`; Telegram/credits feature CI was green.
+
+Implementation:
+
+- Added server-enforced `admin` role policy to `/admin` and every `/api/admin/*` endpoint. Client-side visibility is convenience only and never authorizes access.
+- `ADMIN_TELEGRAM_ID` promotes a user only after a correctly signed, fresh, single-use Telegram login payload matches the configured external identity.
+- Added overview counts for users/recent users, Student AI usage, schedule imports, deadlines, and feedback polarity.
+- Added bounded search/pagination by internal ID, display name, and minimal Telegram link metadata. User detail exposes identity/link, entitlement summary, high-level usage, and relevant admin action history—not schedules, deadline text, notes, or assignment content.
+- Added credit and unlimited mutations with bounds, required reason, CSRF, request-id idempotence, negative-balance prevention, and atomic audit rows. Reusing a request ID for a changed actor/target/action/value/reason is rejected.
+- Mutations remain disabled and return 409 while `ENTITLEMENT_SOURCE=unconnected`; explicit `local` mode is available for staging/local source-of-truth tests only.
+- Added product feedback form and Student AI 👍/👎 action. Feedback is user-owned, size-bounded, idempotent per request ID, and rendered with `textContent`.
+- Added minimal server-side events for completed Student AI analysis, confirmed schedule import, unique deadline creation, and feedback submission. No assignment, answer, schedule, note, or deadline body is stored in events.
+
+Security decisions:
+
+- An ordinary authenticated user receives 403 from both the admin page and direct admin API calls.
+- Admin mutations require both admin role and the session's CSRF token. Role is never accepted from request payloads.
+- Every meaningful entitlement mutation logs actor, timestamp, action, target, delta/state, reason, result, and idempotency key; secrets are never logged.
+- Admin UI intentionally omits private content and uses safe DOM text nodes for untrusted feedback/user fields.
+
+Tests: 57 passed; Python compilation, both JavaScript syntax checks, and diff checks passed.
+
+Attack checks: manual admin URL by normal user, direct normal-user credit request, missing admin CSRF, missing target, zero/oversized/negative adjustment, missing reason, request-id replay with changed input, unconnected source mutation, XSS-shaped feedback, duplicate feedback, and no-private-content response contract.
+
+Changed files: env/config, database/admin/feedback/event schema, main API, entitlement source mode, Student OS Settings/feedback UI, standalone admin HTML/CSS/JS, README, and security tests.
+
+Git commit: `e1940b2` (`Build secure admin and feedback foundation`).
+
+Pushed: YES, `main`.
+
+CI: push triggered; local suite green, remote result will be rechecked next.
+
+Known limitations: no live payment/ledger connection, production OIDC UI, richer retention policy, or separate support workflow. Recent user activity is based on authenticated API access, not invasive tracking.
+
+External blocker: live admin credit control remains intentionally disabled until an authoritative ledger adapter and migration are approved.
+
+Next: versioned owned-data export, installable PWA shell without authenticated API caching, production/deployment contract, then a consolidated security attack pass.
