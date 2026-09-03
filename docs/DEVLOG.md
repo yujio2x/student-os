@@ -393,3 +393,45 @@ Known limitations: there is not yet a production login method, account recovery 
 External blocker: none for Telegram verification code and fixtures. Live Telegram use later requires bot credentials and a configured domain.
 
 Next: implement Telegram signature/freshness verification and external account-link mapping without touching the live bot database.
+
+## 2026-09-03 - Telegram identity and Student AI entitlement boundaries
+
+Goal: implement the maximum safe Telegram/account-link and credit foundation that does not require credentials, a domain, or writes to the live bot ledger.
+
+Starting HEAD: `ab6dac1` on synchronized `main`.
+
+Implementation:
+
+- Added server-side Telegram Login Widget HMAC-SHA-256 verification, bounded fields, constant-time hash comparison, `auth_date` freshness with future-skew bound, and single-use replay keys.
+- Added `external_identities`: Telegram IDs map uniquely to internal Student OS users and never become primary keys. Verified login finds the same user or atomically creates a new one.
+- Added authenticated account-link endpoint with same-user idempotence and explicit conflicts for one Telegram identity across users or a second Telegram identity on one user.
+- Kept unlink fail-closed while Telegram would be the only production recovery/login method; the active session cannot silently make its account unrecoverable.
+- Added honest Settings state for configured/unconfigured/linked Telegram and connected/unconnected credits.
+- Added `StudentAIEntitlementService` protocol and a local unconnected implementation with balance, unlimited, reserve, commit, and release operations.
+- Credit reservations are bound to internal user + request ID, atomic under `BEGIN IMMEDIATE`, idempotent on retry, non-negative, concurrency-safe, and refund exactly once before commit.
+- The entitlement source reports `local-unconnected` and is not used to block Student AI until a reviewed live source is connected. Core organizational features never depend on credits.
+
+Security decisions:
+
+- Bot token stays in environment and never enters frontend state or responses.
+- Missing Telegram configuration returns 503; forged/stale/future/replayed payloads fail without creating a user/session/link.
+- Exact replay prevention is stronger than the legacy widget's bare freshness check. The recommended live UI upgrade is Telegram's current OIDC Authorization Code + PKCE flow after registering a domain/redirect URL.
+- No direct shared-SQLite writer was added against `student-ai-bot`; concurrent processes writing its live ledger would be unsafe.
+
+Tests: 51 passed; Python compilation, JavaScript syntax, and diff checks passed.
+
+Attack checks: forged hash, post-signature field tampering, stale/future auth date, replay, duplicate linking, cross-user identity conflict, unconfigured token, duplicate credit request, request ID stolen by another user, insufficient balance, concurrent double-spend, repeat commit/release, and release after commit.
+
+Changed files: config/env, database schema, Telegram verifier, entitlement service, auth endpoints/bootstrap, Settings status, Telegram/bridge docs, and focused tests.
+
+Git commit: `6d86955` (`Add Telegram identity and credit bridge boundaries`).
+
+Pushed: YES, `main`.
+
+CI: push triggered; remote result will be rechecked at the next checkpoint.
+
+Known limitations: no live OIDC/widget UI, account recovery, bot-ledger adapter, migrated balance, payment handling, or production enforcement. Current Student AI behavior is deliberately preserved while the credit source is unconnected.
+
+External blocker: Telegram Client ID/Secret or bot token, BotFather allowed domain/redirect configuration, approved production domain, and a staging copy/reviewed adapter for the bot ledger.
+
+Next: build the deny-by-default web admin shell, role policy, privacy-minimal overview/users, safe credit controls, feedback, and admin audit log.
