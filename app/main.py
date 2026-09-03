@@ -8,13 +8,17 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.ai_service import StudyService
 from app.auth import SESSION_COOKIE, SessionService
 from app.config import Settings, load_settings
-from app.database import Database, DeadlineConflictError, LessonConflictError
+from app.database import (
+    Database, DeadlineConflictError, ExternalIdentityConflict, LessonConflictError,
+)
+from app.entitlements import LocalEntitlementService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
+from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
 
 
 ALLOWED_FIELDS = {"room", "teacher", "lesson_type", "group_name", "notes"}
@@ -55,6 +59,18 @@ class CompletionUpdate(BaseModel):
 class DeadlineUpdate(DeadlineCreate):
     completed: bool
     source: str = Field(default="manual", exclude=True)
+
+
+class TelegramAuthPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(gt=0)
+    first_name: str = Field(default="", max_length=160)
+    last_name: str = Field(default="", max_length=160)
+    username: str = Field(default="", max_length=80)
+    photo_url: str = Field(default="", max_length=2048)
+    auth_date: int = Field(gt=0)
+    hash: str = Field(min_length=64, max_length=64)
 
 
 class PreferencesUpdate(BaseModel):
@@ -115,6 +131,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     sessions = SessionService(database, config.session_ttl_hours)
     study = StudyService(config.openai_api_key, config.openai_model)
     schedule_import = ScheduleImportService(config.openai_api_key, config.openai_model)
+    telegram = TelegramLoginVerifier(
+        config.telegram_bot_token, config.telegram_auth_max_age_seconds
+    )
+    entitlements = LocalEntitlementService(database)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -129,6 +149,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.study = study
     app.state.schedule_import = schedule_import
     app.state.sessions = sessions
+    app.state.telegram = telegram
+    app.state.entitlements = entitlements
 
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
@@ -142,12 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
         return session
 
-    @app.post("/api/auth/dev-login")
-    def development_login(request: Request, response: Response) -> dict:
-        if config.environment == "production" or not config.dev_login_enabled:
-            raise HTTPException(status_code=404, detail="Not found")
-        user = database.ensure_local_user()
-        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+    def issue_browser_session(response: Response, user: dict, mode: str) -> dict:
         issued = sessions.issue(user["id"])
         response.set_cookie(
             SESSION_COOKIE, issued.token, max_age=config.session_ttl_hours * 3600,
@@ -155,10 +172,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {
             "user": {"id": user["id"], "display_name": user["display_name"], "role": user["role"]},
-            "csrf_token": issued.csrf_token,
-            "expires_at": issued.expires_at,
-            "mode": "development",
+            "csrf_token": issued.csrf_token, "expires_at": issued.expires_at, "mode": mode,
         }
+
+    @app.post("/api/auth/dev-login")
+    def development_login(request: Request, response: Response) -> dict:
+        if config.environment == "production" or not config.dev_login_enabled:
+            raise HTTPException(status_code=404, detail="Not found")
+        user = database.ensure_local_user()
+        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        return issue_browser_session(response, user, "development")
+
+    def verify_telegram_payload(payload: TelegramAuthPayload) -> dict:
+        try:
+            verified = telegram.verify(payload.model_dump())
+        except TelegramAuthError as exc:
+            status = 503 if not config.telegram_bot_token else 401
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        if not database.consume_telegram_auth(verified["replay_key"]):
+            raise HTTPException(status_code=409, detail="Данные Telegram уже использованы")
+        return verified
+
+    @app.post("/api/auth/telegram/login")
+    def telegram_login(payload: TelegramAuthPayload, request: Request, response: Response) -> dict:
+        verified = verify_telegram_payload(payload)
+        user = database.telegram_login_user(
+            verified["telegram_id"], verified["username"], verified["display_name"]
+        )
+        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        return issue_browser_session(response, user, "telegram")
+
+    @app.post("/api/account/telegram/link")
+    def link_telegram(
+        payload: TelegramAuthPayload, session: dict = Depends(csrf_session)
+    ) -> dict:
+        verified = verify_telegram_payload(payload)
+        try:
+            identity = database.link_telegram_identity(
+                session["user_id"], verified["telegram_id"],
+                verified["username"], verified["display_name"],
+            )
+        except ExternalIdentityConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"linked": True, "username": identity["username"], "linked_at": identity["linked_at"]}
+
+    @app.delete("/api/account/telegram/link")
+    def unlink_telegram(session: dict = Depends(csrf_session)) -> dict:
+        if database.telegram_identity(session["user_id"]) is None:
+            raise HTTPException(status_code=404, detail="Telegram-аккаунт не связан")
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить единственный production-вход без способа восстановления",
+        )
 
     @app.get("/api/auth/session")
     def auth_session(session: dict = Depends(current_session)) -> dict:
@@ -190,6 +255,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "user": {"id": user_id, "display_name": session["display_name"], "role": session["role"]},
                 "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
             },
+            "telegram": {
+                "configured": bool(config.telegram_bot_token),
+                "identity": database.telegram_identity(user_id),
+            },
+            "student_ai_entitlement": entitlements.get_balance(user_id),
         }
 
     @app.post("/api/study/analyze")

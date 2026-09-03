@@ -28,6 +28,8 @@ Student OS — единое веб-пространство для повсед�
 - критические тесты, проверки нестандартных и вредоносных входных данных, а также GitHub Actions CI.
 - стабильный внутренний `user_id`, server-side sessions и изоляция пользовательских расписаний, дедлайнов и настроек;
 - HttpOnly session cookie, срок действия, logout/revocation, rotation при повторном входе и CSRF-защита изменяющих запросов.
+- серверная проверка подписи/свежести Telegram Login payload, защита от replay и безопасная связь Telegram ID с internal user;
+- идемпотентная reservation/commit/release abstraction для Student AI credits без доступа к live ledger старого бота.
 
 ## Локальный запуск
 

@@ -16,6 +16,8 @@ class Settings:
     session_ttl_hours: int = 168
     secure_cookies: bool = False
     dev_login_enabled: bool = True
+    telegram_bot_token: str = ""
+    telegram_auth_max_age_seconds: int = 300
 
 
 def load_settings() -> Settings:
@@ -29,4 +31,8 @@ def load_settings() -> Settings:
         session_ttl_hours=max(1, int(os.getenv("SESSION_TTL_HOURS", "168"))),
         secure_cookies=environment == "production",
         dev_login_enabled=os.getenv("DEV_LOGIN_ENABLED", "false").strip().lower() == "true",
+        telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
+        telegram_auth_max_age_seconds=max(
+            60, int(os.getenv("TELEGRAM_AUTH_MAX_AGE_SECONDS", "300"))
+        ),
     )

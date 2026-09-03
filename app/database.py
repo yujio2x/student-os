@@ -16,6 +16,10 @@ class DeadlineConflictError(ValueError):
     pass
 
 
+class ExternalIdentityConflict(ValueError):
+    pass
+
+
 class Database:
     """Small local-first store. All user-owned rows carry a user_id for future auth."""
 
@@ -95,6 +99,40 @@ class Database:
                 CREATE TABLE IF NOT EXISTS app_meta (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS external_identities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider TEXT NOT NULL,
+                    provider_user_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    username TEXT NOT NULL DEFAULT '',
+                    display_name TEXT NOT NULL DEFAULT '',
+                    linked_at TEXT NOT NULL,
+                    UNIQUE(provider, provider_user_id),
+                    UNIQUE(provider, user_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS telegram_auth_replays (
+                    replay_key TEXT PRIMARY KEY,
+                    used_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ai_entitlements (
+                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    balance INTEGER NOT NULL DEFAULT 0 CHECK(balance >= 0),
+                    unlimited INTEGER NOT NULL DEFAULT 0 CHECK(unlimited IN (0, 1)),
+                    source TEXT NOT NULL DEFAULT 'local-unconnected',
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ai_credit_reservations (
+                    request_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    status TEXT NOT NULL CHECK(status IN ('reserved', 'committed', 'released')),
+                    charged INTEGER NOT NULL CHECK(charged IN (0, 1)),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_lessons_user_day
@@ -208,6 +246,94 @@ class Database:
                 (self._now(), token_hash),
             )
             return cursor.rowcount == 1
+
+    def consume_telegram_auth(self, replay_key: str) -> bool:
+        with self.connection() as db:
+            try:
+                db.execute(
+                    "INSERT INTO telegram_auth_replays(replay_key, used_at) VALUES (?, ?)",
+                    (replay_key, self._now()),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def telegram_login_user(
+        self, telegram_id: str, username: str, display_name: str
+    ) -> dict:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                """SELECT u.* FROM external_identities e
+                JOIN users u ON u.id=e.user_id
+                WHERE e.provider='telegram' AND e.provider_user_id=?""",
+                (telegram_id,),
+            ).fetchone()
+            if row:
+                db.execute(
+                    """UPDATE external_identities SET username=?, display_name=?
+                    WHERE provider='telegram' AND provider_user_id=?""",
+                    (username, display_name, telegram_id),
+                )
+                return dict(row)
+            user_id = str(uuid4())
+            now = self._now()
+            db.execute(
+                "INSERT INTO users(id, display_name, role, created_at, last_seen_at) VALUES (?, ?, 'user', ?, ?)",
+                (user_id, display_name, now, now),
+            )
+            db.execute("INSERT INTO preferences(user_id) VALUES (?)", (user_id,))
+            db.execute(
+                """INSERT INTO external_identities
+                (provider, provider_user_id, user_id, username, display_name, linked_at)
+                VALUES ('telegram', ?, ?, ?, ?, ?)""",
+                (telegram_id, user_id, username, display_name, now),
+            )
+            row = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row)
+
+    def link_telegram_identity(
+        self, user_id: str, telegram_id: str, username: str, display_name: str
+    ) -> dict:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            by_telegram = db.execute(
+                """SELECT * FROM external_identities
+                WHERE provider='telegram' AND provider_user_id=?""",
+                (telegram_id,),
+            ).fetchone()
+            if by_telegram and by_telegram["user_id"] != user_id:
+                raise ExternalIdentityConflict("Telegram-аккаунт уже связан с другим пользователем")
+            by_user = db.execute(
+                """SELECT * FROM external_identities
+                WHERE provider='telegram' AND user_id=?""",
+                (user_id,),
+            ).fetchone()
+            if by_user and by_user["provider_user_id"] != telegram_id:
+                raise ExternalIdentityConflict("У пользователя уже связан другой Telegram-аккаунт")
+            now = self._now()
+            db.execute(
+                """INSERT INTO external_identities
+                (provider, provider_user_id, user_id, username, display_name, linked_at)
+                VALUES ('telegram', ?, ?, ?, ?, ?)
+                ON CONFLICT(provider, provider_user_id) DO UPDATE SET
+                username=excluded.username, display_name=excluded.display_name""",
+                (telegram_id, user_id, username, display_name, now),
+            )
+            row = db.execute(
+                "SELECT * FROM external_identities WHERE provider='telegram' AND user_id=?",
+                (user_id,),
+            ).fetchone()
+        return dict(row)
+
+    def telegram_identity(self, user_id: str) -> dict | None:
+        with self.connection() as db:
+            row = db.execute(
+                """SELECT provider_user_id, username, display_name, linked_at
+                FROM external_identities WHERE provider='telegram' AND user_id=?""",
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:

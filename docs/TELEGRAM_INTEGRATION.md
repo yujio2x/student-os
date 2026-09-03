@@ -1,6 +1,15 @@
 # Telegram login, credits и cloud backup
 
-Статус: архитектурное направление принято; production auth в текущий sprint не реализуется.
+Статус: internal identity, server sessions, Telegram HMAC verification и account-link boundary реализованы; live production UI/configuration ещё заблокированы credentials/domain.
+
+## Фактическая реализация
+
+- `users.id` — внутренний UUID Student OS. Telegram ID хранится только в `external_identities`.
+- Legacy Login Widget payload проверяется на сервере по официальному HMAC-SHA-256 контракту, включая `auth_date`; payload разрешено использовать один раз.
+- Новый подтверждённый Telegram ID атомарно создаёт internal user, существующий возвращает того же user. Конфликт одной Telegram identity между пользователями отклоняется.
+- Удаление единственного production login заблокировано до появления безопасного recovery method.
+- Bot token остаётся только в environment. При его отсутствии API честно возвращает `503`, а UI показывает setup state.
+- Telegram в 2026 году также предлагает новый [OIDC flow с Authorization Code и PKCE](https://core.telegram.org/bots/telegram-login). Это предпочтительный live UI после получения Client ID/Secret и регистрации redirect URL; текущий HMAC boundary остаётся проверяемым совместимым вариантом для существующего bot token.
 
 ## Product boundaries
 
@@ -23,7 +32,7 @@ Student OS user
     └── credits ledger bridge
 ```
 
-Текущие таблицы уже содержат `user_id`. Значение `local-demo-user` является временной локальной заглушкой и должно заменяться сервером после появления session/auth слоя.
+Owned-таблицы используют internal `user_id` из проверенной server-side session. `local-demo-user` остался только как маркер одноразовой миграции старой локальной базы.
 
 ## Login flow
 
@@ -60,15 +69,15 @@ Student OS user
 
 ## Этапы внедрения
 
-1. Добавить серверные users/sessions и проверку Telegram login payload.
-2. Заменить `local-demo-user` на identity из session dependency.
-3. Добавить Telegram account link и adapter к credits ledger.
+1. ✅ Добавить серверные users/sessions и проверку Telegram login payload.
+2. ✅ Заменить `local-demo-user` на identity из session dependency.
+3. ✅ Добавить Telegram account link и локальную adapter boundary к credits ledger.
 4. Подключить cloud persistence и миграцию локальных данных после подтверждения пользователем.
 5. Провести отдельный security review: replay, session fixation, CSRF, user isolation, duplicate charging и account unlink/relink.
 
-## Не входит в текущий checkpoint
+## Ещё не подключено
 
-- production cookies/session storage;
+- production Telegram OIDC widget/callback и account recovery;
 - перенос реальных Telegram-пользователей;
 - синхронизация существующего SQLite-файла бота;
 - списание реальных credits;
