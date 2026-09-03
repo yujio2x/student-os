@@ -19,5 +19,12 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m compileall -q app tests
+      - uses: actions/checkout@v4
+        with:
+          repository: yujio2x/student-ai-bot
+          ref: d0e048b7555f985ea5cf8614c5fc130288eabde5
+          path: .integration-bot
+          persist-credentials: false
       - run: python -m pytest tests -q
-
+        env:
+          STUDENT_AI_BOT_ROOT: ${{ github.workspace }}/.integration-bot

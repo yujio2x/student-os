@@ -677,3 +677,54 @@ Blockers: live cutover still needs a production Core URL plus a shared secret in
 Low-usage stop: the default-off bot adapter/outbox was briefly scaffolded but could not be completed safely within the remaining usage. Those incomplete bot edits were removed; the bot worktree was restored exactly to its pre-existing state (`app/bot.py` owner/GitHub rename plus untracked welcome assets/outputs only).
 
 Next: from Student OS `6225ab1` and bot `5a9ce77`, implement the bot adapter as one bounded unit: add default-off config + signed client + durable payment outbox, route bridge-mode balance/products/text/payment delivery while preserving legacy mode, add outage/idempotency tests, then commit only intentional bot files without staging the pre-existing assets/outputs.
+
+## 2026-09-03 — Resumed bot integration checkpoint
+
+Goal: finish the paused bridge unit before proceeding with the beta-readiness brief.
+Starting HEAD: Student OS `2e6eff5`; bot `5a9ce77`. Local/origin matched. Core CI green;
+bot initially had no CI. Pre-existing bot owner/GitHub rename and welcome assets/outputs
+were preserved, excluded from both commits, and remain the only dirty bot files.
+
+Architecture: Core remains the only forward ledger/engine. Bot uses a signed transport
+and separate durable delivery journal; legacy DB/schema are unchanged. Default flag OFF.
+
+Implementation: HTTPS-origin client (loopback HTTP for tests), no redirects, bounded
+request/response, timeouts, safe errors; idempotent outbox with receipt matching and
+concurrent-failure protection; first-priority bridge dispatcher; Core balance/catalog;
+five-second pre-checkout fail-closed; stable Telegram message request IDs; plain-text
+bounded answer formatting; cached one-hour defense without duplicated AI generation;
+startup/60-second retry worker replacing legacy reactivation in bridge mode.
+Old photo/defense/admin/referral mutation paths are blocked in bridge mode, not deleted.
+
+Security/attack: exact Unicode signing, HTTPS policy, malformed/oversized responses,
+no raw transport exception logging, durable outage/reopen, duplicate/conflicting charge,
+invalid receipt, late failed retry, checkout outage, default-OFF no-op, bounded formatting.
+Staged diffs checked for credentials; no tokens, cookies, DBs or private records committed.
+
+Tests: baseline Core 79, bot 60. Final bot 70; Core 82 including three cross-project
+scenarios. Python compile and diff checks pass. Initial bot sandbox temp-directory ACL
+failure resolved by running isolated tests with approved filesystem access; an outbox
+connection-close defect found by Windows tests was fixed before commit.
+
+Integration: real bot client/outbox against Core ASGI with a deterministic engine fixture;
+both directions of shared trial, stable identity, admin credit visibility, unlimited,
+engine contract, failed request refund, duplicate request, 25/100 Stars, wrong amount,
+unknown product and outage retry. No paid AI/Stars call. CI pins tested bot checkout.
+
+Browser QA: not repeated for this backend/Telegram-only change; no Web assets changed.
+Changed files: bot client/outbox/config/dispatcher/runtime hookup/tests/CI/docs/env example;
+Core cross-project tests, CI and bridge/DEVLOG documentation.
+
+Commits: bot `6543f7d` client/outbox; `d0e048b` adapter. Both pushed to main.
+CI: both GREEN (`33792108669`, `33792842618`). Core integration checkpoint pending commit.
+
+Known limitations: photo not yet shared; feedback/legacy controls blocked in bridge mode;
+defense expires on process restart; AI duplicate returns conflict, not cached response;
+process-crashed reservations still need recovery policy. Outbox errors remain pending
+for operator review/retry, with no automatic deletion. Live setup not exercised.
+
+External blockers: live HTTPS Core, credentials and manual cutover; none block offline work.
+Rollback: flag OFF plus explicitly authorized restart restores legacy behavior; retain
+pending outbox and reconcile paid records before retiring Core. No live restart, bridge
+enablement, legacy DB modification or production deployment was performed.
+Next: harden bridge security/operational edge cases, then continue the prioritized brief.

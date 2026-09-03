@@ -39,3 +39,23 @@ Headers are `X-Bridge-Timestamp`, `X-Bridge-Nonce`, and `X-Bridge-Signature`. Co
 ## Rollout
 
 The bot adapter remains default-off with `STUDENT_OS_BRIDGE_ENABLED=false`. Until manual cutover, its existing behavior and database remain unchanged. Enable only after Core health, signed connectivity, owner access, product catalog, synthetic payment, synthetic AI, and outbox retry checks pass.
+
+## Implemented Telegram adapter checkpoint
+
+Bot `d0e048b` routes balance, Core catalog, text analysis, Stars pre-checkout and
+successful payments behind the default-off flag. A separate SQLite outbox commits
+payments before delivery, retries on startup/every 60 seconds in bounded batches,
+and checks the exact Core receipt before marking delivered. Defense uses the same
+structured result without another model call. Old photo/admin/referral callbacks
+cannot mutate a shadow ledger in bridge mode. Legacy mode remains available.
+
+`tests/test_bot_integration.py` loads the actual bot client/outbox against Core ASGI.
+Set `STUDENT_AI_BOT_ROOT=C:\student-ai-bot` locally; CI checks out the pinned bot
+commit. Synthetic fixtures prove Web↔Telegram identity/trial, credits, unlimited,
+shared engine, duplicate request rejection, failure refund, Stars catalog checks
+and durable outage delivery. This is not a live Telegram/payment acceptance test.
+
+Manual cutover and rollback steps are in the bot's `docs/BRIDGE.md`. Keep the
+outbox during rollback; disabling bridge pauses retries and must not discard paid
+pending records. Production URL, credentials, owner verification and explicit live
+restart remain manual prerequisites.
