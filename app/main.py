@@ -14,7 +14,8 @@ from app.ai_service import StudyService
 from app.auth import SESSION_COOKIE, SessionService
 from app.config import Settings, load_settings
 from app.database import (
-    Database, DeadlineConflictError, ExternalIdentityConflict, LessonConflictError,
+    AdminActionConflict, Database, DeadlineConflictError, ExternalIdentityConflict,
+    LessonConflictError,
 )
 from app.entitlements import LocalEntitlementService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
@@ -71,6 +72,41 @@ class TelegramAuthPayload(BaseModel):
     photo_url: str = Field(default="", max_length=2048)
     auth_date: int = Field(gt=0)
     hash: str = Field(min_length=64, max_length=64)
+
+
+class FeedbackInput(BaseModel):
+    kind: str = Field(pattern="^(product|student-ai)$")
+    rating: str = Field(default="", pattern="^(|positive|negative)$")
+    message: str = Field(default="", max_length=2000)
+    request_id: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def useful_feedback(self):
+        self.message = self.message.strip()
+        if self.kind == "product" and not self.message:
+            raise ValueError("product feedback requires a message")
+        if self.kind == "student-ai" and not self.rating:
+            raise ValueError("Student AI feedback requires a rating")
+        return self
+
+
+class CreditAdjustment(BaseModel):
+    delta: int = Field(ge=-1000, le=1000)
+    reason: str = Field(min_length=3, max_length=500)
+    request_id: str = Field(min_length=8, max_length=128)
+
+    @field_validator("delta")
+    @classmethod
+    def nonzero_delta(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("delta must not be zero")
+        return value
+
+
+class UnlimitedAdjustment(BaseModel):
+    enabled: bool
+    reason: str = Field(min_length=3, max_length=500)
+    request_id: str = Field(min_length=8, max_length=128)
 
 
 class PreferencesUpdate(BaseModel):
@@ -134,7 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     telegram = TelegramLoginVerifier(
         config.telegram_bot_token, config.telegram_auth_max_age_seconds
     )
-    entitlements = LocalEntitlementService(database)
+    entitlements = LocalEntitlementService(database, config.entitlement_source)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -159,6 +195,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return session
 
     def csrf_session(request: Request, session: dict = Depends(current_session)) -> dict:
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not secrets.compare_digest(supplied, session["csrf_token"]):
+            raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
+        return session
+
+    def admin_session(session: dict = Depends(current_session)) -> dict:
+        if session["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
+        return session
+
+    def admin_csrf_session(
+        request: Request, session: dict = Depends(admin_session)
+    ) -> dict:
         supplied = request.headers.get("X-CSRF-Token", "")
         if not supplied or not secrets.compare_digest(supplied, session["csrf_token"]):
             raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
@@ -199,6 +248,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user = database.telegram_login_user(
             verified["telegram_id"], verified["username"], verified["display_name"]
         )
+        if config.admin_telegram_id and secrets.compare_digest(
+            verified["telegram_id"], config.admin_telegram_id
+        ):
+            database.set_user_role(user["id"], "admin")
+            user["role"] = "admin"
         sessions.revoke(request.cookies.get(SESSION_COOKIE))
         return issue_browser_session(response, user, "telegram")
 
@@ -262,10 +316,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "student_ai_entitlement": entitlements.get_balance(user_id),
         }
 
+    @app.post("/api/feedback", status_code=201)
+    def submit_feedback(payload: FeedbackInput, session: dict = Depends(csrf_session)) -> dict:
+        result = database.record_feedback(
+            session["user_id"], payload.kind, payload.rating, payload.message, payload.request_id
+        )
+        if result.pop("created"):
+            database.record_event(session["user_id"], "feedback_sent", payload.kind)
+        return result
+
     @app.post("/api/study/analyze")
     def analyze(payload: StudyRequest, session: dict = Depends(csrf_session)) -> dict:
         try:
-            return study.analyze(payload.assignment, payload.subject, payload.title).to_dict()
+            result = study.analyze(payload.assignment, payload.subject, payload.title).to_dict()
+            database.record_event(session["user_id"], "student_ai_used")
+            return result
         except Exception as exc:
             raise HTTPException(status_code=502, detail="AI analysis failed safely; no deadline was saved") from exc
 
@@ -327,14 +392,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except LessonConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        database.record_event(session["user_id"], "schedule_imported", str(len(lessons)))
         return {"lessons": lessons, "imported": len(lessons)}
 
     @app.post("/api/deadlines", status_code=201)
     def create_deadline(payload: DeadlineCreate, session: dict = Depends(csrf_session)) -> dict:
-        return database.add_deadline(
+        deadline = database.add_deadline(
             session["user_id"], payload.title, payload.subject.strip(),
             payload.due_at.isoformat(timespec="minutes"), payload.description.strip(), payload.source,
         )
+        database.record_event(session["user_id"], "deadline_created", str(deadline["id"]))
+        return deadline
 
     @app.patch("/api/deadlines/{deadline_id}")
     def update_deadline(
@@ -374,12 +442,96 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.mobile_schedule_view, payload.visible_fields,
         )
 
+    @app.get("/api/admin/overview")
+    def admin_overview(session: dict = Depends(admin_session)) -> dict:
+        return {**database.admin_overview(), "entitlement_connected": config.entitlement_source == "local"}
+
+    @app.get("/api/admin/users")
+    def admin_users(
+        q: str = "", limit: int = 20, offset: int = 0,
+        session: dict = Depends(admin_session),
+    ) -> dict:
+        if len(q) > 120 or not 1 <= limit <= 100 or offset < 0:
+            raise HTTPException(status_code=422, detail="Некорректная пагинация")
+        return database.admin_users(q, limit, offset)
+
+    @app.get("/api/admin/users/{user_id}")
+    def admin_user(user_id: str, session: dict = Depends(admin_session)) -> dict:
+        result = database.admin_user(user_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        result["actions"] = database.admin_actions(user_id, 20, 0)["actions"]
+        return result
+
+    @app.get("/api/admin/feedback")
+    def admin_feedback(
+        limit: int = 50, offset: int = 0, session: dict = Depends(admin_session)
+    ) -> dict:
+        if not 1 <= limit <= 100 or offset < 0:
+            raise HTTPException(status_code=422, detail="Некорректная пагинация")
+        return database.admin_feedback(limit, offset)
+
+    @app.get("/api/admin/actions")
+    def admin_actions(
+        limit: int = 50, offset: int = 0, session: dict = Depends(admin_session)
+    ) -> dict:
+        if not 1 <= limit <= 100 or offset < 0:
+            raise HTTPException(status_code=422, detail="Некорректная пагинация")
+        return database.admin_actions(None, limit, offset)
+
+    def require_connected_entitlements() -> None:
+        if config.entitlement_source != "local":
+            raise HTTPException(status_code=409, detail="Источник credits пока не подключён")
+
+    @app.post("/api/admin/users/{user_id}/credits")
+    def adjust_credits(
+        user_id: str, payload: CreditAdjustment,
+        session: dict = Depends(admin_csrf_session),
+    ) -> dict:
+        require_connected_entitlements()
+        if database.admin_user(user_id) is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        entitlements.get_balance(user_id)
+        try:
+            balance = database.admin_adjust_credits(
+                session["user_id"], user_id, payload.delta, payload.reason.strip(), payload.request_id
+            )
+        except AdminActionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if balance is None:
+            raise HTTPException(status_code=409, detail="Баланс не может стать отрицательным")
+        return {"balance": balance}
+
+    @app.post("/api/admin/users/{user_id}/unlimited")
+    def set_unlimited(
+        user_id: str, payload: UnlimitedAdjustment,
+        session: dict = Depends(admin_csrf_session),
+    ) -> dict:
+        require_connected_entitlements()
+        if database.admin_user(user_id) is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        entitlements.get_balance(user_id)
+        try:
+            enabled = database.admin_set_unlimited(
+                session["user_id"], user_id, payload.enabled,
+                payload.reason.strip(), payload.request_id,
+            )
+        except AdminActionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if enabled is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        return {"unlimited": enabled}
+
     static_dir = Path(__file__).resolve().parent.parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
         return FileResponse(static_dir / "index.html")
+
+    @app.get("/admin", include_in_schema=False)
+    def admin_page(session: dict = Depends(admin_session)) -> FileResponse:
+        return FileResponse(static_dir / "admin.html")
 
     return app
 

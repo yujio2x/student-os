@@ -88,6 +88,8 @@ textarea { min-height:210px; resize:vertical; }
 .study-result { box-shadow:none; }
 .study-section { padding:19px 0; border-top:1px solid var(--border); }
 .study-section:first-child { padding-top:0; border-top:0; }
+.feedback-rating { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.feedback-rating h3 { width:100%; margin-bottom:4px; }
 .defense { margin:12px -8px -4px; padding:20px; border-radius:14px; background:var(--accent-soft); }
 .defense blockquote { margin:0 0 16px; font-size:16px; }
 .numbered { padding-left:22px; }
@@ -120,6 +122,7 @@ textarea { min-height:210px; resize:vertical; }
 .status-panel { display:flex; align-items:flex-start; gap:12px; padding:15px; border-radius:12px; background:var(--surface-2); }
 .status-panel p { margin:3px 0 0; color:var(--muted); }
 .setting-action { width:100%; display:flex; align-items:center; justify-content:space-between; gap:15px; padding:14px 0; border:0; border-top:1px solid var(--border); background:transparent; color:var(--text); text-align:left; cursor:pointer; }
+.setting-action[href] { text-decoration:none; }
 .setting-action.disabled { cursor:default; color:var(--muted); }
 .mobile-drawer { position:fixed; z-index:40; top:0; bottom:0; left:0; width:min(310px,86vw); padding:22px 16px; background:var(--surface); box-shadow:20px 0 50px rgba(0,0,0,.22); transform:translateX(-105%); transition:transform .2s ease; }
 .mobile-drawer.open { transform:translateX(0); }

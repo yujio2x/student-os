@@ -23,15 +23,21 @@ class StudentAIEntitlementService(Protocol):
 class LocalEntitlementService:
     """Auditable bridge boundary; not connected to the live Telegram ledger."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, source: str = "unconnected") -> None:
         self.database = database
+        self.source = "local" if source == "local" else "local-unconnected"
 
     def _ensure_account(self, db, user_id: str) -> None:
         db.execute(
             """INSERT OR IGNORE INTO ai_entitlements
             (user_id, balance, unlimited, source, updated_at)
-            VALUES (?, 0, 0, 'local-unconnected', ?)""",
-            (user_id, self.database._now()),
+            VALUES (?, 0, 0, ?, ?)""",
+            (user_id, self.source, self.database._now()),
+        )
+        db.execute(
+            """UPDATE ai_entitlements SET source=?
+            WHERE user_id=? AND source IN ('local', 'local-unconnected')""",
+            (self.source, user_id),
         )
 
     def get_balance(self, user_id: str) -> dict:

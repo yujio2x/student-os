@@ -30,6 +30,8 @@ Student OS — единое веб-пространство для повсед�
 - HttpOnly session cookie, срок действия, logout/revocation, rotation при повторном входе и CSRF-защита изменяющих запросов.
 - серверная проверка подписи/свежести Telegram Login payload, защита от replay и безопасная связь Telegram ID с internal user;
 - идемпотентная reservation/commit/release abstraction для Student AI credits без доступа к live ledger старого бота.
+- server-enforced admin control center: privacy-minimal overview, поиск пользователей, entitlement state, feedback и audited credit actions;
+- low-contact product feedback и 👍/👎 для Student AI без сохранения текста учебного задания в analytics.
 
 ## Локальный запуск
 
@@ -62,6 +64,8 @@ py -3.12 -m venv .venv
 `OPENAI_API_KEY` не обязателен для локального демо-режима, но требуется для настоящих ответов Student AI и распознавания расписания на изображениях. Рабочая интеграция использует Responses API со строгой JSON Schema и параметром `store=False`.
 
 Локальный вход является явной development-функцией: `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`. В production `DEV_LOGIN_ENABLED` должен быть выключен; cookie автоматически получает `Secure`, а неподтверждённая сессия не получает доступ к API. Браузер не передаёт и не выбирает `user_id`.
+
+`ADMIN_TELEGRAM_ID` назначает роль администратора только после криптографически подтверждённого Telegram login. Все `/api/admin/*` endpoints и сама страница `/admin` повторно проверяют серверную роль. `ENTITLEMENT_SOURCE=unconnected` оставляет credit mutations выключенными; `local` предназначен только для явно выбранного локального/staging ledger.
 
 Цифровой PDF с извлекаемым текстом можно импортировать локально без API-ключа, если строки имеют понятную структуру, например:
 

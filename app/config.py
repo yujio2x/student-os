@@ -18,6 +18,8 @@ class Settings:
     dev_login_enabled: bool = True
     telegram_bot_token: str = ""
     telegram_auth_max_age_seconds: int = 300
+    admin_telegram_id: str = ""
+    entitlement_source: str = "unconnected"
 
 
 def load_settings() -> Settings:
@@ -35,4 +37,6 @@ def load_settings() -> Settings:
         telegram_auth_max_age_seconds=max(
             60, int(os.getenv("TELEGRAM_AUTH_MAX_AGE_SECONDS", "300"))
         ),
+        admin_telegram_id=os.getenv("ADMIN_TELEGRAM_ID", "").strip(),
+        entitlement_source=os.getenv("ENTITLEMENT_SOURCE", "unconnected").strip().lower(),
     )

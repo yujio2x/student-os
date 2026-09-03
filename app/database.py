@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 from uuid import uuid4
@@ -17,6 +17,10 @@ class DeadlineConflictError(ValueError):
 
 
 class ExternalIdentityConflict(ValueError):
+    pass
+
+
+class AdminActionConflict(ValueError):
     pass
 
 
@@ -135,6 +139,37 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS product_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    event_name TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL CHECK(kind IN ('product', 'student-ai')),
+                    rating TEXT NOT NULL DEFAULT '' CHECK(rating IN ('', 'positive', 'negative')),
+                    message TEXT NOT NULL DEFAULT '',
+                    request_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(user_id, kind, request_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS admin_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT NOT NULL UNIQUE,
+                    actor_user_id TEXT NOT NULL REFERENCES users(id),
+                    action TEXT NOT NULL,
+                    target_user_id TEXT REFERENCES users(id),
+                    details TEXT NOT NULL DEFAULT '',
+                    reason TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_lessons_user_day
                     ON lessons(user_id, weekday, starts_at);
                 CREATE INDEX IF NOT EXISTS idx_deadlines_user_due
@@ -143,6 +178,15 @@ class Database:
                     ON deadlines(user_id, title, due_at, source);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user
                     ON sessions(user_id, expires_at);
+                CREATE INDEX IF NOT EXISTS idx_product_events_name_created
+                    ON product_events(event_name, created_at);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_product_events_deadline_once
+                    ON product_events(user_id, event_name, source)
+                    WHERE event_name='deadline_created';
+                CREATE INDEX IF NOT EXISTS idx_feedback_created
+                    ON feedback(created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_admin_actions_created
+                    ON admin_actions(created_at DESC);
                 """
             )
             columns = {
@@ -334,6 +378,204 @@ class Database:
                 (user_id,),
             ).fetchone()
         return dict(row) if row else None
+
+    def set_user_role(self, user_id: str, role: str) -> bool:
+        if role not in {"user", "admin"}:
+            raise ValueError("invalid role")
+        with self.connection() as db:
+            cursor = db.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+            return cursor.rowcount == 1
+
+    def record_event(self, user_id: str, event_name: str, source: str = "") -> None:
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO product_events(user_id, event_name, source, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, event_name, source[:80], self._now()),
+            )
+
+    def record_feedback(
+        self, user_id: str, kind: str, rating: str, message: str, request_id: str
+    ) -> dict:
+        with self.connection() as db:
+            cursor = db.execute(
+                """INSERT OR IGNORE INTO feedback
+                (user_id, kind, rating, message, request_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, kind, rating, message, request_id, self._now()),
+            )
+            row = db.execute(
+                "SELECT * FROM feedback WHERE user_id=? AND kind=? AND request_id=?",
+                (user_id, kind, request_id),
+            ).fetchone()
+        result = dict(row)
+        result["created"] = cursor.rowcount == 1
+        return result
+
+    def admin_overview(self) -> dict:
+        with self.connection() as db:
+            users = db.execute(
+                """SELECT COUNT(*) total,
+                SUM(CASE WHEN last_seen_at >= ? THEN 1 ELSE 0 END) recent
+                FROM users""",
+                ((datetime.now(UTC) - timedelta(days=7)).isoformat(timespec="seconds"),),
+            ).fetchone()
+            events = {
+                str(row["event_name"]): int(row["count"])
+                for row in db.execute(
+                    "SELECT event_name, COUNT(*) count FROM product_events GROUP BY event_name"
+                ).fetchall()
+            }
+            feedback = db.execute(
+                """SELECT COUNT(*) total,
+                SUM(CASE WHEN rating='positive' THEN 1 ELSE 0 END) positive,
+                SUM(CASE WHEN rating='negative' THEN 1 ELSE 0 END) negative
+                FROM feedback"""
+            ).fetchone()
+        return {
+            "total_users": int(users["total"] or 0),
+            "recent_users_7d": int(users["recent"] or 0),
+            "student_ai_uses": events.get("student_ai_used", 0),
+            "schedule_imports": events.get("schedule_imported", 0),
+            "deadlines_created": events.get("deadline_created", 0),
+            "feedback_total": int(feedback["total"] or 0),
+            "feedback_positive": int(feedback["positive"] or 0),
+            "feedback_negative": int(feedback["negative"] or 0),
+        }
+
+    def admin_users(self, query: str, limit: int, offset: int) -> dict:
+        normalized = query.strip().casefold()
+        where = ""
+        params: list[object] = []
+        if normalized:
+            where = """WHERE lower(u.id) LIKE ? OR lower(u.display_name) LIKE ?
+            OR lower(COALESCE(e.username, '')) LIKE ? OR e.provider_user_id=?"""
+            like = f"%{normalized}%"
+            params = [like, like, like, normalized]
+        with self.connection() as db:
+            total = int(db.execute(
+                f"""SELECT COUNT(*) FROM users u LEFT JOIN external_identities e
+                ON e.user_id=u.id AND e.provider='telegram' {where}""", params,
+            ).fetchone()[0])
+            rows = db.execute(
+                f"""SELECT u.id, u.display_name, u.role, u.created_at, u.last_seen_at,
+                e.provider_user_id telegram_id, e.username telegram_username,
+                COALESCE(a.balance, 0) balance, COALESCE(a.unlimited, 0) unlimited,
+                COALESCE(a.source, 'local-unconnected') entitlement_source
+                FROM users u
+                LEFT JOIN external_identities e ON e.user_id=u.id AND e.provider='telegram'
+                LEFT JOIN ai_entitlements a ON a.user_id=u.id
+                {where} ORDER BY u.created_at DESC LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return {"users": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset}
+
+    def admin_user(self, user_id: str) -> dict | None:
+        result = self.admin_users(user_id, 2, 0)
+        exact = next((row for row in result["users"] if row["id"] == user_id), None)
+        if exact is None:
+            return None
+        with self.connection() as db:
+            exact["usage"] = {
+                str(row["event_name"]): int(row["count"])
+                for row in db.execute(
+                    """SELECT event_name, COUNT(*) count FROM product_events
+                    WHERE user_id=? GROUP BY event_name""", (user_id,),
+                ).fetchall()
+            }
+        return exact
+
+    def admin_feedback(self, limit: int, offset: int) -> dict:
+        with self.connection() as db:
+            total = int(db.execute("SELECT COUNT(*) FROM feedback").fetchone()[0])
+            rows = db.execute(
+                """SELECT id, user_id, kind, rating, message, created_at
+                FROM feedback ORDER BY id DESC LIMIT ? OFFSET ?""", (limit, offset),
+            ).fetchall()
+        return {"feedback": [dict(row) for row in rows], "total": total}
+
+    def admin_actions(self, target_user_id: str | None, limit: int, offset: int) -> dict:
+        where = "WHERE target_user_id=?" if target_user_id else ""
+        params: tuple[object, ...] = (target_user_id,) if target_user_id else ()
+        with self.connection() as db:
+            total = int(db.execute(
+                f"SELECT COUNT(*) FROM admin_actions {where}", params
+            ).fetchone()[0])
+            rows = db.execute(
+                f"""SELECT id, actor_user_id, action, target_user_id, details, reason, result, created_at
+                FROM admin_actions {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return {"actions": [dict(row) for row in rows], "total": total}
+
+    def admin_adjust_credits(
+        self, actor_user_id: str, target_user_id: str, delta: int,
+        reason: str, request_id: str,
+    ) -> int | None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            prior = db.execute(
+                "SELECT actor_user_id, action, target_user_id, details, reason, result FROM admin_actions WHERE request_id=?", (request_id,)
+            ).fetchone()
+            if prior:
+                if (
+                    prior["actor_user_id"] != actor_user_id
+                    or prior["action"] != "credits_adjusted"
+                    or prior["target_user_id"] != target_user_id
+                    or prior["details"] != f"delta={delta}"
+                    or prior["reason"] != reason
+                ):
+                    raise AdminActionConflict("request_id already used for another action")
+                return int(prior["result"])
+            cursor = db.execute(
+                """UPDATE ai_entitlements SET balance=balance+?, updated_at=?
+                WHERE user_id=? AND balance+?>=0""",
+                (delta, self._now(), target_user_id, delta),
+            )
+            if cursor.rowcount != 1:
+                return None
+            balance = int(db.execute(
+                "SELECT balance FROM ai_entitlements WHERE user_id=?", (target_user_id,)
+            ).fetchone()[0])
+            db.execute(
+                """INSERT INTO admin_actions
+                (request_id, actor_user_id, action, target_user_id, details, reason, result, created_at)
+                VALUES (?, ?, 'credits_adjusted', ?, ?, ?, ?, ?)""",
+                (request_id, actor_user_id, target_user_id, f"delta={delta}", reason, str(balance), self._now()),
+            )
+        return balance
+
+    def admin_set_unlimited(
+        self, actor_user_id: str, target_user_id: str, enabled: bool,
+        reason: str, request_id: str,
+    ) -> bool | None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            prior = db.execute(
+                "SELECT actor_user_id, action, target_user_id, details, reason, result FROM admin_actions WHERE request_id=?", (request_id,)
+            ).fetchone()
+            if prior:
+                if (
+                    prior["actor_user_id"] != actor_user_id
+                    or prior["action"] != "unlimited_changed"
+                    or prior["target_user_id"] != target_user_id
+                    or prior["details"] != f"enabled={int(enabled)}"
+                    or prior["reason"] != reason
+                ):
+                    raise AdminActionConflict("request_id already used for another action")
+                return prior["result"] == "1"
+            cursor = db.execute(
+                "UPDATE ai_entitlements SET unlimited=?, updated_at=? WHERE user_id=?",
+                (int(enabled), self._now(), target_user_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+            db.execute(
+                """INSERT INTO admin_actions
+                (request_id, actor_user_id, action, target_user_id, details, reason, result, created_at)
+                VALUES (?, ?, 'unlimited_changed', ?, ?, ?, ?, ?)""",
+                (request_id, actor_user_id, target_user_id, f"enabled={int(enabled)}", reason, str(int(enabled)), self._now()),
+            )
+        return enabled
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:

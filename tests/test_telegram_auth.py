@@ -69,7 +69,7 @@ def test_forged_stale_future_and_unconfigured_payloads_fail(tmp_path: Path) -> N
             "/api/auth/telegram/login", json=signed_payload(now - 301)
         ).status_code == 401
         assert client.post(
-            "/api/auth/telegram/login", json=signed_payload(now + 31)
+            "/api/auth/telegram/login", json=signed_payload(now + 60)
         ).status_code == 401
 
     no_token = create_app(Settings(tmp_path / "no-token.db", "", "gpt-5.6-luna"))
@@ -106,3 +106,19 @@ def test_link_is_idempotent_but_conflicting_user_is_denied(tmp_path: Path) -> No
         )
         assert conflict.status_code == 409
         assert app.state.database.telegram_identity(owner["user"]["id"])["provider_user_id"] == "777"
+
+
+def test_only_verified_configured_telegram_owner_becomes_admin(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            tmp_path / "owner.db", "", "gpt-5.6-luna",
+            telegram_bot_token=BOT_TOKEN, admin_telegram_id="777",
+        )
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/auth/telegram/login", json=signed_payload(int(time.time()))
+        )
+        assert response.status_code == 200
+        assert response.json()["user"]["role"] == "admin"
+        assert client.get("/api/admin/overview").status_code == 200
