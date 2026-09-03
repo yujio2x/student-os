@@ -102,6 +102,17 @@ def test_unlimited_never_decrements_paid_balance(tmp_path: Path) -> None:
     assert service.get_balance(user_id)["balance"] == 3
 
 
+def test_concurrent_trial_is_shared_exactly_once(tmp_path):
+    _, service, user_id = service_with_user(tmp_path, trial_available=True)
+    def reserve(identifier):
+        try:
+            return service.reserve_credit(user_id, identifier)["entitlement_source"]
+        except InsufficientCredits:
+            return "denied"
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert sorted(executor.map(reserve, ["web-trial", "bot-trial"])) == ["denied", "trial"]
+
+
 def test_legacy_reservations_gain_token_accounting_columns(tmp_path: Path) -> None:
     database = Database(tmp_path / "legacy-reservation.db")
     database.initialize()

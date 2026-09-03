@@ -1,5 +1,48 @@
 # Student OS engineering DEVLOG
 
+## 2026-09-04 — Synchronized bridge operational checkpoint
+
+Resumed the paused work from Core `2e6eff5` / bot `5a9ce77`; current baseline
+before this checkpoint is Core `36756a6` / bot `f6e4552`, both GitHub CI GREEN.
+Completed signed v2 transport, durable Stars outbox, shared text/photo adapters,
+OIDC account flow, atomic owned-data restore and cross-project integration harness.
+This checkpoint adds shared idempotent feedback, signed health coverage and a
+concurrent Web/bot trial regression. CI pins bot `f6e4552` exactly.
+
+Bot operational hardening: stop an outage retry batch after the first transient
+failure, cap payment delivery timeout, and never initialize legacy AI in bridge mode.
+One Windows-only config test failed because clearing environment removed SSL platform
+state. The shell mistakenly proceeded to commit `46d28a4` after that failure; follow-up
+`f6e4552` isolates the config fixture, then the full suite passed. No live runtime changed.
+
+Validation: Core **99 passed** including five actual-adapter integration tests;
+bot **73 passed**. Python compile, every static JS syntax check and diff check pass.
+Attack coverage includes duplicate/concurrent trial and payments, signature endpoint
+binding/replay, foreign sessions, CSRF, refund paths, malformed/oversized uploads,
+restore snapshot conflicts and SQL rollback. Starlette emits one nonblocking
+httpx TestClient deprecation warning.
+
+Browser QA: desktop Today/Schedule/AI/Calendar/Settings and admin overview render;
+Settings retains requested two-column card order. Schedule weekday headings align,
+Fields labels and checkboxes use stable rows. At 390×844 all four primary screens
+have scrollWidth equal to clientWidth (375 or 390 with scrollbar); Calendar also
+fits 360×844. Photo confirmation/session recovery used a deterministic isolated
+fixture; restore preview/cancel checked in-browser, replacement verified in tests.
+Chrome app/Settings render with no captured console errors. Native PWA installation
+and real OIDC/OCR/Stars remain unverified; do not label these as live-tested.
+
+Safety: no live bot restart, bridge activation, legacy DB writes, production deploy,
+paid requests or secret disclosure. Original bot.py author/link edits and untracked
+welcome assets/outputs remain user-owned and excluded. Core changes are scoped.
+
+Remaining limitations: natural-language photo follow-ups are not routed (explicit
+one/all selections work); process-crashed reservations need audited operator recovery;
+live cutover needs configured HTTPS/OIDC/bridge secrets and owner approval.
+Next safe task: complete PWA install affordance and browser eligibility checks;
+then review the documented cutover checklist without enabling production.
+Rollback: keep bridge OFF to retain legacy runtime; preserve Core ledger and payment
+outbox even during rollback. Restore user data only from explicit prior exports.
+
 ## 2026-09-02 - Starting state and migration audit
 
 ### Repositories

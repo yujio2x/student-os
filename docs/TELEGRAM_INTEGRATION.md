@@ -103,13 +103,13 @@ Telegram adapter вызывает узкий `/api/internal/v1/*` API с HMAC-SH
 2. ✅ Заменить `local-demo-user` на identity из session dependency.
 3. ✅ Добавить Telegram account link и локальную adapter boundary к credits ledger.
 4. ✅ Добавить unified ledger, HMAC bridge и authoritative Stars catalog.
-5. Подключить default-off Telegram adapter с durable payment outbox и провести ручной cutover.
+5. ✅ Default-off Telegram adapter с durable payment outbox, text/photo/feedback; ручной cutover ещё не выполнен.
 6. Подключить cloud persistence только в отдельном scope.
 
 ## Ещё не подключено
 
-- production Telegram OIDC widget/callback и account recovery;
+- live-проверка реализованного OIDC callback с production credentials/domain; автоматическое слияние аккаунтов не реализовано;
 - перенос реальных Telegram-пользователей;
-- синхронизация существующего SQLite-файла бота;
+- миграция legacy SQLite намеренно не выполняется: он остаётся archive/rollback;
 - списание реальных credits;
 - cloud deployment и backup scheduler.

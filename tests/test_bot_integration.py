@@ -144,3 +144,14 @@ def test_photo_setup_shared_between_bot_and_web(integration):
         bot.confirm_photo(identity, data, "image/png", quote["quote_id"])
     assert web.post("/api/study/photo/quote", files={"file": ("fake.png", b"not-png", "image/png")}, headers=headers).status_code == 422
     assert web.post("/api/study/photo/quote", files={"file": ("safe.png", data, "image/png")}).status_code == 403
+
+
+def test_bot_feedback_reaches_unified_admin_once(integration):
+    app, _, bot, _, _, _ = integration
+    identity = telegram()
+    first = bot.feedback(identity, "positive", "telegram-feedback-001")
+    second = bot.feedback(identity, "positive", "telegram-feedback-001")
+    assert first["id"] == second["id"]
+    overview = app.state.database.admin_overview()
+    assert overview["feedback_positive"] == 1
+    assert bot.health()["status"] == "ready"

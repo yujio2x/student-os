@@ -60,8 +60,8 @@ Rollback is configuration-first: set the bot bridge flag to false and restart th
 
 - Production Telegram client/bot credentials, allowed domain/redirect, and a verified account recovery decision.
 - A persistent-volume Student OS database and a long random `BOT_BRIDGE_SECRET` shared through secret storage.
-- Product decision for web photo pricing; current bot semantics remain one shared trial or five paid credits for photo setup.
+- Photo pricing is implemented as decided: one shared trial or five paid credits for setup; live OCR quality still needs acceptance.
 - A reachable HTTPS Core URL for the bot host and a manual cutover window.
-- Device QA with real sanitized tasks before enabling the photo input or public beta.
+- Device QA with real sanitized tasks before public beta; fixture-based Web/photo QA is complete.
 
 No live migration or paid AI request is authorized by this document.

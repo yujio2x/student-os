@@ -18,6 +18,11 @@ All bridge operations are `POST` under `/api/internal/v1`:
 
 Requests carry only Telegram external identity and operation data. Core never accepts an internal `user_id`, granted-credit count, unlimited flag, or trial state from the adapter.
 
+Additional implemented operations: `/health` (safe readiness summary), `/feedback`
+(idempotent Telegram ratings in unified admin), `/study/photo/quote`, `/confirm`,
+`/answer`, `/session` under the photo prefix. Photo upload JSON is bounded to 9 MiB,
+decoded images to 6 MiB/16M pixels; all other signed operations remain 64 KiB.
+
 ## Authentication
 
 `BOT_BRIDGE_SECRET` signs the exact body with HMAC-SHA-256 over:

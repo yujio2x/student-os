@@ -182,6 +182,11 @@ class BridgePhotoSelection(BridgeIdentityRequest):
     request_id: str = Field(min_length=8, max_length=128)
 
 
+class BridgeFeedbackRequest(BridgeIdentityRequest):
+    rating: str = Field(pattern="^(positive|negative)$")
+    request_id: str = Field(min_length=8, max_length=128)
+
+
 class PreferencesUpdate(BaseModel):
     theme: str = Field(pattern="^(light|dark)$")
     schedule_view: str = Field(pattern="^(week|day)$")
@@ -645,6 +650,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pending = db.execute("SELECT COUNT(*) FROM ai_credit_reservations WHERE status='reserved'").fetchone()[0]
         return {"status": "ready" if config.entitlement_source in {"core", "local"} else "unavailable",
                 "ai_mode": "live" if study.client else "demo", "pending_reservations": pending}
+
+    @app.post("/api/internal/v1/feedback")
+    def bridge_feedback(payload: BridgeFeedbackRequest, _: None = Depends(bridge_request)):
+        user = resolve_bridge_user(payload.telegram)
+        result = database.record_feedback(user["id"], "student-ai", payload.rating, "", payload.request_id)
+        if result.pop("created"):
+            database.record_event(user["id"], "feedback_sent", "student-ai")
+        return result
 
     @app.post("/api/internal/v1/identity/resolve")
     def bridge_resolve_identity(
