@@ -228,3 +228,13 @@ def test_auth_rejects_non_ascii_header_and_rate_limit(tmp_path):
             else:
                 with pytest.raises(BridgeRateLimitError):
                     auth.verify(str(now), nonce, signature, b"{}")
+
+
+def test_internal_health_and_sensitive_cache_headers(tmp_path):
+    app = bridge_app(tmp_path / "health.db")
+    with TestClient(app) as client:
+        assert client.post("/api/internal/v1/health", json={}).status_code == 401
+        response = bridge_post(client, "/api/internal/v1/health", {})
+        assert response.json() == {"status": "ready", "ai_mode": "demo", "pending_reservations": 0}
+        assert response.headers["cache-control"] == "no-store"
+        assert client.get("/admin").headers["cache-control"] == "no-store"

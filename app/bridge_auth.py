@@ -14,6 +14,10 @@ class BridgeAuthError(ValueError):
 
 
 def body_limit(path):
+    if path in {"/api/restore/preview", "/api/restore/confirm"}:
+        return 5 * 1024 * 1024 + 64 * 1024
+    if path in {"/api/study/photo/quote", "/api/study/photo/confirm", "/api/schedule/import/preview"}:
+        return 6 * 1024 * 1024 + 64 * 1024
     return 9 * 1024 * 1024 if path in {
         "/api/internal/v1/study/photo/quote", "/api/internal/v1/study/photo/confirm"
     } else 64 * 1024
@@ -30,7 +34,10 @@ class BridgeBodyLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/internal/"):
+        path = scope.get("path", "")
+        upload_paths = {"/api/restore/preview", "/api/restore/confirm", "/api/study/photo/quote",
+                        "/api/study/photo/confirm", "/api/schedule/import/preview"}
+        if scope["type"] != "http" or not (path.startswith("/api/internal/") or path in upload_paths):
             return await self.app(scope, receive, send)
         body = bytearray()
         while True:

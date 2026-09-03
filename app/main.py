@@ -31,6 +31,7 @@ from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleI
 from app.telegram_auth import TelegramAuthError, TelegramLoginVerifier
 from app.telegram_oidc import LOGIN_COOKIE, OIDCError, TelegramOIDC
 from app.photo_service import PhotoService, PhotoError, MAX_PHOTO_BYTES
+from app.restore_service import RestoreService, RestoreError, RestoreConflict, MAX_RESTORE_BYTES
 
 
 ALLOWED_FIELDS = {"room", "teacher", "lesson_type", "group_name", "notes"}
@@ -249,6 +250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     owned_export = OwnedDataExportService(database)
     oidc = TelegramOIDC(database, config)
     photo = PhotoService(database, entitlements, study)
+    restore = RestoreService(database, LessonInput, DeadlineCreate, PreferencesUpdate)
 
     async def cleanup_photos():
         while True:
@@ -260,6 +262,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database.initialize()
         oidc.initialize()
         photo.initialize()
+        restore.initialize()
         if config.environment != "production" and config.dev_login_enabled:
             local_user = database.ensure_local_user()
             database.seed_demo(local_user["id"])
@@ -273,6 +276,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
     app.add_middleware(BridgeBodyLimitMiddleware)
+
+    @app.middleware("http")
+    async def privacy_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path.startswith(("/api/", "/admin")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
     app.state.database = database
     app.state.study = study
     app.state.schedule_import = schedule_import
@@ -283,6 +295,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.owned_export = owned_export
     app.state.oidc = oidc
     app.state.photo = photo
+    app.state.restore = restore
 
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
@@ -582,6 +595,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="student-os-export.json"'},
         )
 
+    @app.post("/api/restore/preview")
+    async def restore_preview(file: UploadFile = File(...), session: dict = Depends(csrf_session)):
+        raw = await file.read(MAX_RESTORE_BYTES + 1)
+        try:
+            return await asyncio.to_thread(restore.preview, session["user_id"], raw)
+        except RestoreError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    @app.post("/api/restore/confirm")
+    async def restore_confirm(file: UploadFile = File(...), preview_id: str = Form(..., max_length=64),
+                              confirm_replace: bool = Form(...), session: dict = Depends(csrf_session)):
+        if not confirm_replace:
+            raise HTTPException(status_code=422, detail="Требуется явное подтверждение замены")
+        raw = await file.read(MAX_RESTORE_BYTES + 1)
+        try:
+            return await asyncio.to_thread(restore.confirm, session["user_id"], raw, preview_id)
+        except RestoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except RestoreError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
     @app.post("/api/feedback", status_code=201)
     def submit_feedback(payload: FeedbackInput, session: dict = Depends(csrf_session)) -> dict:
         result = database.record_feedback(
@@ -604,6 +638,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/internal/v1/products")
     def bridge_products(_: None = Depends(bridge_request)) -> dict:
         return {"products": list(PRODUCTS.values())}
+
+    @app.post("/api/internal/v1/health")
+    def bridge_health(_: None = Depends(bridge_request)):
+        with database.connection() as db:
+            pending = db.execute("SELECT COUNT(*) FROM ai_credit_reservations WHERE status='reserved'").fetchone()[0]
+        return {"status": "ready" if config.entitlement_source in {"core", "local"} else "unavailable",
+                "ai_mode": "live" if study.client else "demo", "pending_reservations": pending}
 
     @app.post("/api/internal/v1/identity/resolve")
     def bridge_resolve_identity(

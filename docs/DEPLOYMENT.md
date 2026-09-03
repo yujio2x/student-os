@@ -26,4 +26,19 @@ Student OS готов к staging-развёртыванию как один ASGI
 
 Пользователь может скачать versioned JSON со своими настройками, занятиями и дедлайнами. Сессии, CSRF, Telegram identity, feedback и admin-аудит в него не входят.
 
-Restore пока отсутствует. Безопасный будущий flow: upload → schema validation → owned-data preview → explicit replace confirmation → одна атомарная транзакция. Сервер не должен принимать `user_id` из файла или частично применять повреждённый архив.
+Restore реализован: upload → validation → preview → explicit replace confirmation → atomic transaction. Лимиты 5 МБ/10 000 записей, schema_version=1. Сначала сохраните текущий экспорт. Preview привязан к user, файлу и текущему состоянию, действует пять минут. user_id/private поля и пересечения отклоняются; IDs создаются заново. Баланс, Telegram, sessions, платежи и аудит не затрагиваются.
+
+## Staging и ручной cutover
+
+1. Backup legacy bot DB, Core DB и outbox; не подменять один другим.
+2. Совместимые версии Core/bot на HTTPS с persistent volumes; bridge OFF.
+3. OIDC Allowed URLs/RS256 и secrets вне Git; проверить owner `8247777174` и обычного пользователя.
+4. Synthetic signed health/catalog/identity/AI/payment/outage smoke. GET /api/health — liveness; signed POST /api/internal/v1/health — ledger-ready, AI mode, pending reservations.
+5. Export/restore на disposable staging account, mobile UI, реальные OCR-примеры. Платные AI/Stars — только после отдельного разрешения.
+6. Владелец включает flag и перезапускает managed bot. Проверить /balance, /buy, text, photo, Web refresh, admin.
+7. Rollback: flag OFF + ручной restart. Pending outbox сохранить и доставить/сверить; не терять оплаченные Stars.
+
+Зависшие reserved после аварии процесса не возвращаются автоматически: оператор сверяет
+запрос и выдаёт аудируемую компенсацию через admin; lease/recovery policy — следующий hardening.
+Proxy ограничивает request size/time, не логирует auth callback query/cookies. Один SQLite
+writer/process — текущая staging topology. Production deploy автоматически не выполнялся.

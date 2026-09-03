@@ -824,3 +824,26 @@ Photo checkpoint verification: full Core suite **92 passed**, bot **71 passed**.
 Bot `cb83d2d` pushed; Core CI pins this exact compatible revision. Both runtime feature
 flags remain unchanged. Temporary synthetic PNG removed after browser QA; isolated
 ignored QA database retained only for reproducibility. No user-provided asset removed.
+
+## 2026-09-04 — Safe restore and ingress/cache hardening
+
+Goal: owned-data restore without identity/ledger changes or partial persistence.
+Starting HEAD: Core `17a4d0b`, bot `cb83d2d`; both CI GREEN.
+Architecture: existing domain validators; five-minute preview hashes bound to user/file/
+current snapshot. Confirm revalidates and replaces lessons/deadlines/preferences in one
+BEGIN IMMEDIATE transaction. Changed file/data, expired/replayed/foreign preview fail closed.
+New IDs; private/unknown fields, duplicate JSON keys/deadlines, overlaps and bad values rejected.
+Limits: 5 MiB/10K records. No account/credits/payment mutation.
+
+UI: upload, before/after counts, replacement checkbox, disabled confirm until consent,
+current-export warning and cancellation. Browser: 390×844 preview/disabled confirm/cancel
+on isolated QA DB. Actual replacement and database-error rollback verified by automated
+tests, not claimed as browser-confirmed.
+Security: upload caps before multipart parsing; API/admin no-store; no-referrer/nosniff;
+SW caches explicit public shell only. Signed health exposes mode/readiness/pending count.
+Tests: **97 Core tests passed**, including roundtrip, rollback, IDOR, CSRF, snapshot conflict,
+duplicate confirmation, malformed/private-field archives. Python/JS syntax/diff checks pass.
+No production credentials or actions. Changed files: restore service/routes/UI/tests,
+ingress, headers, SW, deployment and DEVLOG. Rollback: disable restore UI/routes; actual
+data rollback requires an explicit prior export, never silent DB-file replacement.
+Next: remaining small operational/documentation gaps and synchronized final checkpoint.

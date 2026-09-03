@@ -79,6 +79,7 @@ def test_pwa_manifest_and_worker_keep_authenticated_data_out_of_cache(tmp_path: 
     assert "serviceWorker.register" in app_js
     assert 'url.pathname.startsWith("/api/")' in worker
     assert 'url.pathname.startsWith("/admin")' in worker
+    assert "PUBLIC_SHELL.includes(url.pathname)" in worker
     assert "/api/" not in " ".join(worker.split("PUBLIC_SHELL=")[1].split(";")[0:1])
     for name in ("icon-192.png", "icon-512.png"):
         icon = (Path(__file__).parents[1] / "static" / name).read_bytes()
