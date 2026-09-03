@@ -664,14 +664,16 @@ Browser QA: on isolated local port 8001, development owner opened the updated ad
 
 Changed files: configuration, database schema/migrations, unified entitlement service, HMAC bridge authentication, Core routes/models, Web Student AI purchase/refresh UI, admin UI, service worker, tests, README and architecture/deployment/Telegram documents.
 
-Commit: pending.
+Commit: `6225ab181564066747e8512265e7129a87fd6c3f` (`Build unified Student AI core ledger`).
 
-Push: pending.
+Push: YES, `main`.
 
-CI: pending.
+CI: GREEN, GitHub Actions run `33744359026`.
 
 Limitations: bot adapter/outbox is not yet changed; bridge remains unused by the live bot. Photo UI remains disabled. The existing inaccessible process still owns localhost port 8000, so this checkout's browser QA uses port 8001.
 
 Blockers: live cutover still needs a production Core URL plus a shared secret installed in both services; this does not block implementation/testing.
 
-Next: commit and push this Core checkpoint, confirm CI, then add the default-off bot adapter and durable outbox without overwriting its pre-existing `app/bot.py` edits.
+Low-usage stop: the default-off bot adapter/outbox was briefly scaffolded but could not be completed safely within the remaining usage. Those incomplete bot edits were removed; the bot worktree was restored exactly to its pre-existing state (`app/bot.py` owner/GitHub rename plus untracked welcome assets/outputs only).
+
+Next: from Student OS `6225ab1` and bot `5a9ce77`, implement the bot adapter as one bounded unit: add default-off config + signed client + durable payment outbox, route bridge-mode balance/products/text/payment delivery while preserving legacy mode, add outage/idempotency tests, then commit only intentional bot files without staging the pre-existing assets/outputs.
