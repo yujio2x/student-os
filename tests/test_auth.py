@@ -99,10 +99,21 @@ def test_dev_admin_is_explicit_and_impossible_in_production(tmp_path: Path) -> N
         )
     )
     with TestClient(development) as client:
-        session = login(client)
-        assert session["user"]["role"] == "admin"
         assert client.get("/admin").status_code == 200
+        session = client.get("/api/auth/session").json()
+        assert session["user"]["role"] == "admin"
         assert client.get("/api/admin/overview").status_code == 200
+
+    disabled = create_app(
+        Settings(
+            tmp_path / "dev-disabled.db", "", "gpt-5.6-luna",
+            environment="development", dev_login_enabled=True, dev_admin_enabled=False,
+        )
+    )
+    with TestClient(disabled) as client:
+        session = login(client)
+        assert session["user"]["role"] == "user"
+        assert client.get("/admin").status_code == 403
 
     production = create_app(
         Settings(
@@ -118,6 +129,31 @@ def test_dev_admin_is_explicit_and_impossible_in_production(tmp_path: Path) -> N
         client.cookies.set(SESSION_COOKIE, issued.token)
         assert client.get("/admin").status_code == 403
         assert client.get("/api/admin/overview").status_code == 403
+
+
+def test_admin_page_rotates_stale_ordinary_development_session(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            tmp_path / "stale-dev-admin.db", "", "gpt-5.6-luna",
+            environment="development", dev_login_enabled=True, dev_admin_enabled=True,
+        )
+    )
+    with TestClient(app) as client:
+        user = app.state.database.ensure_local_user()
+        app.state.database.set_user_role(user["id"], "user")
+        stale = app.state.sessions.issue(user["id"])
+        client.cookies.set(
+            SESSION_COOKIE, stale.token, domain="testserver.local", path="/"
+        )
+
+        response = client.get("/admin")
+
+        assert response.status_code == 200
+        assert client.cookies.get(
+            SESSION_COOKIE, domain="testserver.local", path="/"
+        ) != stale.token
+        assert app.state.sessions.resolve(stale.token) is None
+        assert client.get("/api/auth/session").json()["user"]["role"] == "admin"
 
 
 def test_users_cannot_read_or_modify_foreign_objects(tmp_path: Path) -> None:

@@ -112,12 +112,21 @@ def test_only_verified_configured_telegram_owner_becomes_admin(tmp_path: Path) -
     app = create_app(
         Settings(
             tmp_path / "owner.db", "", "gpt-5.6-luna",
-            telegram_bot_token=BOT_TOKEN, admin_telegram_id="777",
+            environment="production", secure_cookies=False,
+            telegram_bot_token=BOT_TOKEN, owner_telegram_id="8247777174",
         )
     )
     with TestClient(app) as client:
+        ordinary = client.post(
+            "/api/auth/telegram/login", json=signed_payload(int(time.time()), telegram_id=777)
+        )
+        assert ordinary.status_code == 200
+        assert ordinary.json()["user"]["role"] == "user"
+        assert client.get("/admin").status_code == 403
+
         response = client.post(
-            "/api/auth/telegram/login", json=signed_payload(int(time.time()))
+            "/api/auth/telegram/login",
+            json=signed_payload(int(time.time()) + 1, telegram_id=8247777174),
         )
         assert response.status_code == 200
         assert response.json()["user"]["role"] == "admin"

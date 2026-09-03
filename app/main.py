@@ -214,8 +214,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if config.environment == "production":
             identity = database.telegram_identity(session["user_id"])
             owner_id = identity["provider_user_id"] if identity else ""
-            if not config.admin_telegram_id or not secrets.compare_digest(
-                owner_id, config.admin_telegram_id
+            if not config.owner_telegram_id or not secrets.compare_digest(
+                owner_id, config.owner_telegram_id
             ):
                 raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
         return session
@@ -270,8 +270,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user = database.telegram_login_user(
             verified["telegram_id"], verified["username"], verified["display_name"]
         )
-        if config.admin_telegram_id and secrets.compare_digest(
-            verified["telegram_id"], config.admin_telegram_id
+        if config.owner_telegram_id and secrets.compare_digest(
+            verified["telegram_id"], config.owner_telegram_id
         ):
             database.set_user_role(user["id"], "admin")
             user["role"] = "admin"
@@ -601,7 +601,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(static_dir / "index.html")
 
     @app.get("/admin", include_in_schema=False)
-    def admin_page(session: dict = Depends(admin_session)) -> FileResponse:
+    def admin_page(request: Request) -> FileResponse:
+        session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
+        dev_owner_bootstrap = (
+            config.environment == "development"
+            and config.dev_login_enabled
+            and config.dev_admin_enabled
+        )
+        if dev_owner_bootstrap:
+            user = database.ensure_local_user()
+            database.set_user_role(user["id"], "admin")
+            if session is None or session["user_id"] != user["id"] or session["role"] != "admin":
+                sessions.revoke(request.cookies.get(SESSION_COOKIE))
+                response = FileResponse(static_dir / "admin.html")
+                issue_browser_session(response, {**user, "role": "admin"}, "development-owner")
+                return response
+            return FileResponse(static_dir / "admin.html")
+        if session is None:
+            raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
+        admin_session(session)
         return FileResponse(static_dir / "admin.html")
 
     return app

@@ -605,3 +605,30 @@ Known limitations/blockers:
 Deliberately omitted: live bot or database changes, Telegram handler imports, production deployment, Contacts, Knowledge Base, OCR, cloud sync, offline user data, payments, recurring calendar, and redesign.
 
 Next: implement the production Telegram connection UI and a staging-only authoritative entitlement adapter, then exercise the sanitized text/photo compatibility fixtures before any live migration.
+
+## 2026-09-03 - Pre-integration regression checkpoint
+
+Goal: close the two release-blocking regressions before starting the unified-core work.
+
+Implementation:
+
+- Direct navigation to `/admin` now bootstraps and rotates a server-side session for the stable local development user when `APP_ENV=development`, `DEV_LOGIN_ENABLED=true`, and `DEV_ADMIN_ENABLED=true` are all explicit.
+- Development bootstrap remains disabled by default. Production still requires an admin-role session backed by a cryptographically verified Telegram identity equal to `OWNER_TELEGRAM_ID=8247777174`; a role-only session and any other verified Telegram account are denied.
+- Renamed the active owner setting from `ADMIN_TELEGRAM_ID` to `OWNER_TELEGRAM_ID` in code and current setup/deployment documentation.
+- Moved the schedule's `Сегодня` marker outside normal desktop heading flow. A fixed heading row now keeps weekday labels and first lesson cards aligned; mobile retains a natural two-line current-day heading.
+
+Tests and attack checks:
+
+- 71 pytest tests passed, including new direct-bootstrap, stale-session rotation, production owner/non-owner, and schedule-header contract regressions.
+- Python compilation, JavaScript syntax, and `git diff --check` passed.
+- Attack cases covered: missing/off development flags, development flags set in production, forged role-only production admin, verified non-owner Telegram account, stale ordinary local session, and duplicate cookie/session rotation behavior.
+
+Browser QA:
+
+- Direct local `/admin` opened the real control center without a manual login or DevTools preparation under the explicit development flags.
+- Desktop 1440×1000: Monday-Friday weekday headings shared the same Y coordinate, and every first lesson/empty card shared the same Y coordinate; `Сегодня` rendered above Thursday without shifting that column.
+- Mobile 390×844: the marker stacked above the weekday, all schedule rows remained usable, and the document did not overflow horizontally (`scrollWidth` 375 at a 390 px viewport).
+
+Known limitation: another inaccessible stale local process occupied `127.0.0.1:8000` during QA, so the current checkout was exercised on isolated local port 8001. The application route and configuration path are identical; no deployment or live configuration was changed.
+
+Next: commit and push this regression-only checkpoint. Begin the unified ledger/bridge work only from that green state.

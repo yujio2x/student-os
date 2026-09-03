@@ -35,7 +35,7 @@ function renderToday(){
 
 function renderSchedule(){
   const grid=document.querySelector("#scheduleGrid"),today=(new Date().getDay()+6)%7,mobile=matchMedia("(max-width: 900px)").matches,view=mobile?state.preferences.mobile_schedule_view:state.preferences.schedule_view,days=view==="day"?[today]:[0,1,2,3,4,5,6];grid.replaceChildren();
-  days.forEach(day=>{const column=element("section","day-column"),heading=element("p","day-heading");heading.append(element("strong","",dayNames[day]));if(day===today)heading.append(document.createTextNode("Сегодня"));column.append(heading);const lessons=state.lessons.filter(x=>x.weekday===day);if(!lessons.length)column.append(element("div","card empty-copy","Занятий нет"));lessons.forEach(x=>column.append(lessonNode(x)));grid.append(column);});
+  days.forEach(day=>{const column=element("section","day-column"),heading=element("div","day-heading");if(day===today)heading.append(element("span","today-marker","Сегодня"));heading.append(element("strong","",dayNames[day]));column.append(heading);const lessons=state.lessons.filter(x=>x.weekday===day);if(!lessons.length)column.append(element("div","card empty-copy","Занятий нет"));lessons.forEach(x=>column.append(lessonNode(x)));grid.append(column);});
   document.querySelector("#weekView").classList.toggle("active",view==="week");document.querySelector("#dayView").classList.toggle("active",view==="day");syncSettingsControls();
 }
 

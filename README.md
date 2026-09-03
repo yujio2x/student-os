@@ -72,9 +72,9 @@ py -3.12 -m venv .venv
 
 Локальный вход является явной development-функцией: `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`. В production `DEV_LOGIN_ENABLED` должен быть выключен; cookie автоматически получает `Secure`, а неподтверждённая сессия не получает доступ к API. Браузер не передаёт и не выбирает `user_id`.
 
-`ADMIN_TELEGRAM_ID` назначает роль администратора только после криптографически подтверждённого Telegram login. Все `/api/admin/*` endpoints и сама страница `/admin` повторно проверяют серверную роль. `ENTITLEMENT_SOURCE=unconnected` оставляет credit mutations выключенными; `local` предназначен только для явно выбранного локального/staging ledger.
+`OWNER_TELEGRAM_ID` назначает роль администратора только после криптографически подтверждённого Telegram login. Все `/api/admin/*` endpoints и сама страница `/admin` повторно проверяют серверную роль. `ENTITLEMENT_SOURCE=unconnected` оставляет credit mutations выключенными; `local` предназначен только для явно выбранного локального/staging ledger.
 
-Для локального просмотра admin panel включите `DEV_ADMIN_ENABLED=true` вместе с `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`. Эта настройка игнорируется в production. Там admin-доступ дополнительно требует verified Telegram identity, совпадающую с `ADMIN_TELEGRAM_ID`.
+Для локального просмотра admin panel включите `DEV_ADMIN_ENABLED=true` вместе с `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`: прямой переход на `/admin` сам создаст или обновит локальную owner-сессию. Эта настройка игнорируется в production. Там admin-доступ дополнительно требует verified Telegram identity, совпадающую с `OWNER_TELEGRAM_ID`.
 
 Student AI запускается только для аккаунта с подтверждённой Telegram identity и подключённым entitlement source. Пока authoritative ledger не подключён, UI честно показывает beta-состояние и не имитирует баланс. Ошибка AI освобождает предварительно зарезервированный credit.
 

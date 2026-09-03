@@ -70,10 +70,11 @@ h3 { font-size:16px; }
 .field-option { min-height:36px; padding:4px 0; }
 .field-option input,.settings-field input { width:17px; height:17px; margin:0; flex:0 0 auto; accent-color:var(--accent); }
 .schedule-hint { margin:10px 4px 14px; font-size:13px; }
-.schedule-grid { display:grid; width:100%; max-width:100%; grid-template-columns:repeat(5,minmax(155px,1fr)); gap:12px; overflow-x:auto; }
+.schedule-grid { display:grid; width:100%; max-width:100%; grid-template-columns:repeat(5,minmax(155px,1fr)); gap:12px; padding-top:16px; overflow-x:auto; }
 .day-column { min-width:155px; }
-.day-heading { margin:0 0 10px; padding:0 4px; color:var(--muted); font-size:13px; }
+.day-heading { position:relative; height:25px; margin:0 0 10px; padding:0 4px; color:var(--muted); font-size:13px; }
 .day-heading strong { display:block; color:var(--text); font-size:16px; }
+.today-marker { position:absolute; left:4px; bottom:calc(100% + 1px); color:var(--accent); font-size:10px; font-weight:750; text-transform:uppercase; letter-spacing:.06em; }
 .lesson-card { width:100%; min-height:126px; margin-bottom:10px; padding:14px; text-align:left; color:var(--text); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:13px; background:var(--surface); cursor:pointer; }
 .lesson-card:hover { transform:translateY(-1px); border-color:color-mix(in srgb,var(--accent) 55%,var(--border)); box-shadow:var(--shadow); }
 .lesson-time { color:var(--accent); font-size:12px; font-weight:750; }
@@ -187,9 +188,11 @@ textarea { min-height:210px; resize:vertical; }
   .study-form { position:static; }
   .schedule-actions { align-items:flex-start; }
   .action-group { flex-wrap:wrap; justify-content:flex-end; }
-  .schedule-grid { display:block; overflow:visible; }
+  .schedule-grid { display:block; padding-top:0; overflow:visible; }
   .day-column { width:100%; margin-bottom:22px; }
   .day-heading { position:sticky; top:0; z-index:2; margin:0 0 9px; padding:8px 4px; background:var(--bg); }
+  .day-heading:has(.today-marker) { height:48px; }
+  .today-marker { position:static; display:block; height:16px; }
   .lesson-card { min-height:0; margin-bottom:9px; padding:16px; }
   .calendar-grid { width:100%; grid-template-columns:repeat(7,minmax(0,1fr)); overflow:hidden; }
   .weekday { min-width:0; padding:8px 2px; }
