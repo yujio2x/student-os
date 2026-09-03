@@ -95,7 +95,24 @@ def test_admin_credit_mutations_are_bounded_idempotent_and_audited(tmp_path: Pat
         }
         detail = client.get(f"/api/admin/users/{target['id']}").json()
         assert len(detail["actions"]) == 2
+        assert detail["free_trial_available"] == 1
         assert "lessons" not in detail and "deadlines" not in detail
+
+        with app.state.database.connection() as db:
+            db.execute(
+                "UPDATE ai_entitlements SET free_trial_available=0 WHERE user_id=?",
+                (target["id"],),
+            )
+        restored = client.post(
+            f"/api/admin/users/{target['id']}/trial",
+            json={"reason": "Restore support attempt", "request_id": "trial-action-1"},
+        )
+        assert restored.json()["free_trial_available"] is True
+        assert client.post(
+            f"/api/admin/users/{target['id']}/trial",
+            json={"reason": "Restore support attempt", "request_id": "trial-action-1"},
+        ).json()["free_trial_available"] is True
+        assert app.state.database.admin_actions(None, 10, 0)["total"] == 3
 
 
 def test_unconnected_credit_source_disables_admin_writes(tmp_path: Path) -> None:

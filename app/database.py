@@ -126,7 +126,10 @@ class Database:
                     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     balance INTEGER NOT NULL DEFAULT 0 CHECK(balance >= 0),
                     unlimited INTEGER NOT NULL DEFAULT 0 CHECK(unlimited IN (0, 1)),
-                    source TEXT NOT NULL DEFAULT 'local-unconnected',
+                    free_trial_available INTEGER NOT NULL DEFAULT 1
+                        CHECK(free_trial_available IN (0, 1)),
+                    source TEXT NOT NULL DEFAULT 'core',
+                    created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
 
@@ -135,10 +138,32 @@ class Database:
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     status TEXT NOT NULL CHECK(status IN ('reserved', 'committed', 'released')),
                     charged INTEGER NOT NULL CHECK(charged IN (0, 1)),
+                    amount INTEGER NOT NULL DEFAULT 1 CHECK(amount >= 0),
+                    entitlement_source TEXT NOT NULL DEFAULT 'paid',
                     input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(input_tokens >= 0),
                     output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(output_tokens >= 0),
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    committed_at TEXT,
+                    released_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS telegram_star_payments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider TEXT NOT NULL DEFAULT 'telegram_stars'
+                        CHECK(provider='telegram_stars'),
+                    telegram_payment_charge_id TEXT NOT NULL UNIQUE,
+                    telegram_user_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL REFERENCES users(id),
+                    product_id TEXT NOT NULL,
+                    stars_paid INTEGER NOT NULL CHECK(stars_paid > 0),
+                    credits_granted INTEGER NOT NULL CHECK(credits_granted > 0),
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS bridge_replays (
+                    nonce TEXT PRIMARY KEY,
+                    used_at TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS product_events (
@@ -189,6 +214,8 @@ class Database:
                     ON feedback(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_admin_actions_created
                     ON admin_actions(created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_star_payments_user_created
+                    ON telegram_star_payments(user_id, created_at DESC);
                 """
             )
             columns = {
@@ -216,6 +243,33 @@ class Database:
             if "output_tokens" not in reservation_columns:
                 db.execute(
                     "ALTER TABLE ai_credit_reservations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0"
+                )
+            if "amount" not in reservation_columns:
+                db.execute(
+                    "ALTER TABLE ai_credit_reservations ADD COLUMN amount INTEGER NOT NULL DEFAULT 1"
+                )
+            if "entitlement_source" not in reservation_columns:
+                db.execute(
+                    "ALTER TABLE ai_credit_reservations ADD COLUMN entitlement_source TEXT NOT NULL DEFAULT 'paid'"
+                )
+            if "committed_at" not in reservation_columns:
+                db.execute("ALTER TABLE ai_credit_reservations ADD COLUMN committed_at TEXT")
+            if "released_at" not in reservation_columns:
+                db.execute("ALTER TABLE ai_credit_reservations ADD COLUMN released_at TEXT")
+            entitlement_columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(ai_entitlements)").fetchall()
+            }
+            if "free_trial_available" not in entitlement_columns:
+                db.execute(
+                    "ALTER TABLE ai_entitlements ADD COLUMN free_trial_available INTEGER NOT NULL DEFAULT 1"
+                )
+            if "created_at" not in entitlement_columns:
+                db.execute(
+                    "ALTER TABLE ai_entitlements ADD COLUMN created_at TEXT NOT NULL DEFAULT ''"
+                )
+                db.execute(
+                    "UPDATE ai_entitlements SET created_at=updated_at WHERE created_at=''"
                 )
 
     @staticmethod
@@ -311,6 +365,17 @@ class Database:
                 db.execute(
                     "INSERT INTO telegram_auth_replays(replay_key, used_at) VALUES (?, ?)",
                     (replay_key, self._now()),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def consume_bridge_nonce(self, nonce: str) -> bool:
+        with self.connection() as db:
+            try:
+                db.execute(
+                    "INSERT INTO bridge_replays(nonce, used_at) VALUES (?, ?)",
+                    (nonce, self._now()),
                 )
             except sqlite3.IntegrityError:
                 return False
@@ -450,10 +515,31 @@ class Database:
                 SUM(CASE WHEN rating='negative' THEN 1 ELSE 0 END) negative
                 FROM feedback"""
             ).fetchone()
+            reservations = db.execute(
+                """SELECT COUNT(*) total,
+                SUM(CASE WHEN status='committed' THEN 1 ELSE 0 END) successful,
+                SUM(CASE WHEN status='released' THEN 1 ELSE 0 END) failed
+                FROM ai_credit_reservations"""
+            ).fetchone()
+            payments = db.execute(
+                """SELECT COUNT(*) total, COALESCE(SUM(stars_paid), 0) stars
+                FROM telegram_star_payments"""
+            ).fetchone()
+            ledger = db.execute(
+                """SELECT COALESCE(SUM(balance), 0) credits,
+                COALESCE(SUM(unlimited), 0) unlimited_users FROM ai_entitlements"""
+            ).fetchone()
         return {
             "total_users": int(users["total"] or 0),
             "recent_users_7d": int(users["recent"] or 0),
             "student_ai_uses": events.get("student_ai_used", 0),
+            "student_ai_requests": int(reservations["total"] or 0),
+            "student_ai_successful": int(reservations["successful"] or 0),
+            "student_ai_failed": int(reservations["failed"] or 0),
+            "stars_payments": int(payments["total"] or 0),
+            "stars_received": int(payments["stars"] or 0),
+            "credits_outstanding": int(ledger["credits"] or 0),
+            "unlimited_users": int(ledger["unlimited_users"] or 0),
             "schedule_imports": events.get("schedule_imported", 0),
             "deadlines_created": events.get("deadline_created", 0),
             "feedback_total": int(feedback["total"] or 0),
@@ -479,7 +565,8 @@ class Database:
                 f"""SELECT u.id, u.display_name, u.role, u.created_at, u.last_seen_at,
                 e.provider_user_id telegram_id, e.username telegram_username,
                 COALESCE(a.balance, 0) balance, COALESCE(a.unlimited, 0) unlimited,
-                COALESCE(a.source, 'local-unconnected') entitlement_source
+                COALESCE(a.free_trial_available, 1) free_trial_available,
+                COALESCE(a.source, 'core') entitlement_source
                 FROM users u
                 LEFT JOIN external_identities e ON e.user_id=u.id AND e.provider='telegram'
                 LEFT JOIN ai_entitlements a ON a.user_id=u.id
@@ -501,6 +588,20 @@ class Database:
                     WHERE user_id=? GROUP BY event_name""", (user_id,),
                 ).fetchall()
             }
+            exact["payments"] = [dict(row) for row in db.execute(
+                """SELECT product_id, stars_paid, credits_granted, created_at
+                FROM telegram_star_payments WHERE user_id=? ORDER BY id DESC LIMIT 20""",
+                (user_id,),
+            ).fetchall()]
+            totals = db.execute(
+                """SELECT COUNT(*) requests,
+                COALESCE(SUM(CASE WHEN status='committed' THEN 1 ELSE 0 END), 0) successful,
+                COALESCE(SUM(input_tokens), 0) input_tokens,
+                COALESCE(SUM(output_tokens), 0) output_tokens
+                FROM ai_credit_reservations WHERE user_id=?""",
+                (user_id,),
+            ).fetchone()
+            exact["ai_totals"] = dict(totals)
         return exact
 
     def admin_feedback(self, limit: int, offset: int) -> dict:
@@ -595,6 +696,41 @@ class Database:
                 (request_id, actor_user_id, target_user_id, f"enabled={int(enabled)}", reason, str(int(enabled)), self._now()),
             )
         return enabled
+
+    def admin_restore_trial(
+        self, actor_user_id: str, target_user_id: str,
+        reason: str, request_id: str,
+    ) -> bool | None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            prior = db.execute(
+                """SELECT actor_user_id, action, target_user_id, details, reason, result
+                FROM admin_actions WHERE request_id=?""",
+                (request_id,),
+            ).fetchone()
+            if prior:
+                if (
+                    prior["actor_user_id"] != actor_user_id
+                    or prior["action"] != "trial_restored"
+                    or prior["target_user_id"] != target_user_id
+                    or prior["reason"] != reason
+                ):
+                    raise AdminActionConflict("request_id already used for another action")
+                return prior["result"] == "1"
+            cursor = db.execute(
+                """UPDATE ai_entitlements SET free_trial_available=1, updated_at=?
+                WHERE user_id=?""",
+                (self._now(), target_user_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+            db.execute(
+                """INSERT INTO admin_actions
+                (request_id, actor_user_id, action, target_user_id, details, reason, result, created_at)
+                VALUES (?, ?, 'trial_restored', ?, 'available=1', ?, '1', ?)""",
+                (request_id, actor_user_id, target_user_id, reason, self._now()),
+            )
+        return True
 
     def seed_demo(self, user_id: str) -> None:
         with self.connection() as db:

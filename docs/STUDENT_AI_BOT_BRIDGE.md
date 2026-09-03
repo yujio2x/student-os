@@ -1,47 +1,41 @@
-# Student AI bot bridge — read-only audit and integration plan
+# Student AI bot bridge
 
-## Audit boundary
+## Decision
 
-Repository `C:\student-ai-bot` was inspected read-only at HEAD `5a9ce776a6e60a3879f51263443d9c89c115f7c1`. It already had unrelated uncommitted changes in `app/bot.py` and untracked assets/outputs; Student OS did not alter, stage, or commit any of them.
+Student OS Core is the source of truth going forward. It owns internal users, Telegram identity links, the shared first trial, credit balance, unlimited state, AI reservations/token totals, Telegram Stars payment credits, admin adjustments, and audit. The legacy bot database is preserved as an archive and rollback reference; historical balances are not automatically migrated.
 
-Useful patterns confirmed:
+The Telegram bot remains a presentation/transport adapter. It never imports `bot.py` into Core and, in bridge mode, never writes a second balance after a Stars payment.
 
-- atomic credit consumption and explicit restoration on AI failure;
-- idempotent payment delivery keyed by Telegram charge ID;
-- minimum event payloads without task/answer content;
-- owner checks on every admin command/callback;
-- paginated user/payment views and atomic admin mutations with an audit row.
+## Service API
 
-Patterns deliberately not copied:
+All bridge operations are `POST` under `/api/internal/v1`:
 
-- Telegram ID as the web application's user primary key;
-- direct Telegram handler dependencies in web core;
-- full task content in operational admin views;
-- direct writes to the live bot SQLite database from an unproven bridge.
+- `/products` returns the authoritative catalog: `task_help_1_v1` = 25 Stars / 1 credit and `task_help_5_v1` = 100 Stars / 5 credits.
+- `/identity/resolve` maps a Telegram identity to one stable internal UUID.
+- `/entitlement` returns trial, balance and unlimited state.
+- `/study/text` performs reserve → canonical structured engine → token-accounted commit, with release on failure.
+- `/payments/telegram-stars` validates product and Stars amount, then credits exactly once by Telegram charge ID.
 
-## Student OS entitlement boundary
+Requests carry only Telegram external identity and operation data. Core never accepts an internal `user_id`, granted-credit count, unlimited flag, or trial state from the adapter.
 
-`StudentAIEntitlementService` exposes:
+## Authentication
 
-- `get_balance(user_id)`;
-- `reserve_credit(user_id, request_id)`;
-- `commit_usage(request_id)`;
-- `release_reservation(request_id)`.
+`BOT_BRIDGE_SECRET` signs the exact body with HMAC-SHA-256 over:
 
-The local implementation uses `BEGIN IMMEDIATE`, binds each request ID to one internal user, prevents negative balances, makes reserve/commit/release retries idempotent, and refunds only an uncommitted charged reservation. Unlimited accounts reserve without decrementing.
+```text
+<unix timestamp>.<unique nonce>.<exact request body>
+```
 
-Its default source is explicitly `local-unconnected`. Student AI now fails closed unless the current internal user has a verified Telegram link and the entitlement source reports connected. A connected adapter follows reserve → engine → token-accounted commit, with release on engine failure. Schedule, Deadlines, Today, Calendar, Settings, export, and other organization features never call this service.
+Headers are `X-Bridge-Timestamp`, `X-Bridge-Nonce`, and `X-Bridge-Signature`. Core uses constant-time comparison, a five-minute default freshness window, durable nonce replay rejection, a 64 KiB body limit, and a basic per-process rate ceiling. Browser cookies and CSRF are not accepted as bridge credentials. The bridge returns 503 when its secret is absent.
 
-The current `local` source is an isolated development/staging fixture, not the payment source of truth. Reusing a processed request ID is rejected before a second engine call; a future authoritative adapter may instead return a safely cached response.
+## Failure and idempotency
 
-## Safe live bridge plan
+- Duplicate AI `request_id` never invokes the engine twice or consumes twice.
+- Failed AI releases paid credits or restores the shared trial.
+- Duplicate successful payment returns the original record without adding credits.
+- Reusing a charge ID for different identity/product/amount is a conflict.
+- Bot-side successful payments must enter its durable outbox before delivery; Core outage is retried later.
 
-1. Backfill `external_identities(provider='telegram')` only from a reviewed mapping; never infer users from browser payloads.
-2. Choose one ledger owner. Recommended first beta: the existing bot database remains authoritative for Telegram balances.
-3. Add a narrow adapter/service API that reads and reserves by verified Telegram identity with request idempotency; do not attach both processes as competing writers to the same SQLite file.
-4. Reconcile reservations, completed usage, releases, payments, and admin adjustments in a staging copy before any live migration.
-5. Enable enforcement only after mismatch, retry, failure-refund, and concurrency tests pass against that adapter.
+## Rollout
 
-External blockers: production bot/client credentials, registered domain/redirect URL, an approved mapping/migration window, and a staging copy of the live ledger. None justify modifying live data now.
-
-The detailed old-bot → shared domain → Telegram/web mapping, photo compatibility fixtures, rollout stages, and rollback procedure are in `docs/STUDENT_AI_ARCHITECTURE.md`.
+The bot adapter remains default-off with `STUDENT_OS_BRIDGE_ENABLED=false`. Until manual cutover, its existing behavior and database remain unchanged. Enable only after Core health, signed connectivity, owner access, product catalog, synthetic payment, synthetic AI, and outbox retry checks pass.

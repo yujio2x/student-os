@@ -19,8 +19,11 @@ class Settings:
     telegram_bot_token: str = ""
     telegram_auth_max_age_seconds: int = 300
     owner_telegram_id: str = ""
-    entitlement_source: str = "unconnected"
+    entitlement_source: str = "core"
     dev_admin_enabled: bool = False
+    bot_bridge_secret: str = ""
+    bot_bridge_max_age_seconds: int = 300
+    telegram_bot_username: str = ""
 
 
 def load_settings() -> Settings:
@@ -39,9 +42,14 @@ def load_settings() -> Settings:
             60, int(os.getenv("TELEGRAM_AUTH_MAX_AGE_SECONDS", "300"))
         ),
         owner_telegram_id=os.getenv("OWNER_TELEGRAM_ID", "").strip(),
-        entitlement_source=os.getenv("ENTITLEMENT_SOURCE", "unconnected").strip().lower(),
+        entitlement_source=os.getenv("ENTITLEMENT_SOURCE", "core").strip().lower(),
         dev_admin_enabled=(
             environment == "development"
             and os.getenv("DEV_ADMIN_ENABLED", "false").strip().lower() == "true"
         ),
+        bot_bridge_secret=os.getenv("BOT_BRIDGE_SECRET", "").strip(),
+        bot_bridge_max_age_seconds=max(
+            30, int(os.getenv("BOT_BRIDGE_MAX_AGE_SECONDS", "300"))
+        ),
+        telegram_bot_username=os.getenv("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@"),
     )

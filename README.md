@@ -29,7 +29,8 @@ Student OS — единое веб-пространство для повсед�
 - стабильный внутренний `user_id`, server-side sessions и изоляция пользовательских расписаний, дедлайнов и настроек;
 - HttpOnly session cookie, срок действия, logout/revocation, rotation при повторном входе и CSRF-защита изменяющих запросов.
 - серверная проверка подписи/свежести Telegram Login payload, защита от replay и безопасная связь Telegram ID с internal user;
-- идемпотентная reservation/commit/release abstraction для Student AI credits без доступа к live ledger старого бота.
+- единый transactional ledger для trial, credits, unlimited, AI reservations и Telegram Stars payments;
+- закрытый HMAC bridge, через который Telegram adapter использует тот же account и canonical AI engine.
 - server-enforced admin control center: privacy-minimal overview, поиск пользователей, entitlement state, feedback и audited credit actions;
 - явный development-only admin bootstrap для локальной проверки control center без ослабления production Telegram-owner policy;
 - low-contact product feedback и 👍/👎 для Student AI без сохранения текста учебного задания в analytics.
@@ -72,11 +73,11 @@ py -3.12 -m venv .venv
 
 Локальный вход является явной development-функцией: `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`. В production `DEV_LOGIN_ENABLED` должен быть выключен; cookie автоматически получает `Secure`, а неподтверждённая сессия не получает доступ к API. Браузер не передаёт и не выбирает `user_id`.
 
-`OWNER_TELEGRAM_ID` назначает роль администратора только после криптографически подтверждённого Telegram login. Все `/api/admin/*` endpoints и сама страница `/admin` повторно проверяют серверную роль. `ENTITLEMENT_SOURCE=unconnected` оставляет credit mutations выключенными; `local` предназначен только для явно выбранного локального/staging ledger.
+`OWNER_TELEGRAM_ID` назначает роль администратора только после криптографически подтверждённого Telegram login. Все `/api/admin/*` endpoints и сама страница `/admin` повторно проверяют серверную роль. `ENTITLEMENT_SOURCE=core` использует единый Student OS ledger; `unconnected` аварийно выключает AI/credit mutations.
 
 Для локального просмотра admin panel включите `DEV_ADMIN_ENABLED=true` вместе с `APP_ENV=development` и `DEV_LOGIN_ENABLED=true`: прямой переход на `/admin` сам создаст или обновит локальную owner-сессию. Эта настройка игнорируется в production. Там admin-доступ дополнительно требует verified Telegram identity, совпадающую с `OWNER_TELEGRAM_ID`.
 
-Student AI запускается только для аккаунта с подтверждённой Telegram identity и подключённым entitlement source. Пока authoritative ledger не подключён, UI честно показывает beta-состояние и не имитирует баланс. Ошибка AI освобождает предварительно зарезервированный credit.
+Student AI запускается только для аккаунта с подтверждённой Telegram identity. Первая обычная попытка, balance и unlimited принадлежат одному internal user; ошибка AI освобождает reservation и восстанавливает trial/credits. Telegram adapter подключается к тем же данным только при ручном включении своего default-off bridge flag.
 
 Цифровой PDF с извлекаемым текстом можно импортировать локально без API-ключа, если строки имеют понятную структуру, например:
 

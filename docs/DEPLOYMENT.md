@@ -7,10 +7,12 @@ Student OS готов к staging-развёртыванию как один ASGI
 - `APP_ENV=production`, `DEV_LOGIN_ENABLED=false` и `DEV_ADMIN_ENABLED=false` — development-вход и bootstrap администратора закрыты, session cookie получает `Secure`. Даже ошибочно включённый `DEV_ADMIN_ENABLED` игнорируется вне development.
 - `DATABASE_PATH` должен указывать на постоянный подключённый volume. Эфемерная SQLite удалит пользователей и их данные при пересоздании инстанса.
 - HTTPS завершается на доверенном reverse proxy, который не логирует cookie, Telegram payload или тела пользовательских запросов.
-- `TELEGRAM_BOT_TOKEN`, разрешённый домен/redirect и `OWNER_TELEGRAM_ID` задаются только через secret storage платформы.
+- `TELEGRAM_BOT_TOKEN`, разрешённый домен/redirect, `OWNER_TELEGRAM_ID` и `BOT_BRIDGE_SECRET` задаются только через secret storage платформы.
 - `OPENAI_API_KEY` необязателен для деморежима; production-ключ хранится только в secret storage.
 
-`ENTITLEMENT_SOURCE=unconnected` остаётся безопасным значением до подключения авторитетного ledger adapter. Ручные credit mutations при этом отклоняются. `local` допустим только для изолированного staging.
+`ENTITLEMENT_SOURCE=core` включает новый authoritative Student OS ledger. `unconnected` — аварийный fail-closed режим, в котором AI и credit mutations отклоняются. `BOT_BRIDGE_SECRET` должен быть длинным случайным значением, одинаковым только у Core и Telegram adapter; bridge без него возвращает 503.
+
+Если настроен `TELEGRAM_BOT_USERNAME`, Web показывает deep link `https://t.me/<bot>?start=buy`. Секрет bridge, подписи, Telegram payload и task bodies нельзя писать в proxy/application logs.
 
 ## Процесс и проверка
 

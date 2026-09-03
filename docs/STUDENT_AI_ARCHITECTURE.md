@@ -39,22 +39,22 @@ The old bot charges five paid credits for a photo setup and permits follow-ups i
 
 Compatibility fixtures must cover a single task, numbered multi-task photo, generic “solve all”, explicit range, unreadable fragment, 24-hour expiry, repeated confirmation, concurrent confirmation, follow-up without a second charge, failure refund, and `Как защитить` over the selected answer.
 
-## Ledger migration and rollout
+## Unified ledger and rollout
 
-1. Freeze contract fixtures from sanitized old-bot text/photo answers, token usage, trial, paid, unlimited, failure, and duplicate-update cases.
-2. Extract the engine runner/domain behind interfaces while the Telegram bot still uses its existing implementation. Compare outputs in tests; do not share Telegram handlers.
-3. Expose one authoritative entitlement adapter keyed by verified Telegram identity and request ID. Never let two processes independently write the live SQLite ledger.
-4. Reconcile a staging copy: identities, balances, unlimited flags, trials, payments, reservations, refunds, and token totals. Mismatch blocks rollout.
-5. Enable Student OS for a small allowlist, then move the Telegram bot onto the same service semantics only after observability and rollback checks pass.
+1. Student OS Core owns the new ledger from a clean state; the legacy bot database remains an untouched archive/rollback reference.
+2. Web calls the canonical engine directly through the Core application service. Telegram calls the same semantic operation through the signed bridge; neither interface owns a second prompt contract.
+3. Every request is keyed by internal user plus idempotent request ID and follows reserve → engine → commit/release.
+4. Telegram Stars are delivered through a durable bot outbox and credited once by charge ID against the Core-owned catalog.
+5. Enable the default-off Telegram adapter only after cross-project identity, trial, payment, AI, outage, and rollback tests pass.
 
-Rollback is configuration-first: disable the web engine/ledger adapter, reject new Student AI calls with an honest unavailable state, drain or release pending reservations, and keep organizational features available. Never roll back by restoring an old database over the live file. Keep the old bot on its previous adapter until reconciliation is complete.
+Rollback is configuration-first: set the bot bridge flag to false and restart the bot. Its legacy path/database remain intact until the owner deliberately retires them. Never restore an old database over the Student OS Core ledger.
 
 ## Manual prerequisites and blockers
 
 - Production Telegram client/bot credentials, allowed domain/redirect, and a verified account recovery decision.
-- Read-only staging copy of the live ledger plus an approved maintenance/migration window.
-- Product decision for shared trial and web photo pricing; these cannot be inferred safely from Telegram UI behavior.
-- An authenticated service boundary between adapters and the ledger, with request signing, timeouts, audit logs, and rate limits.
+- A persistent-volume Student OS database and a long random `BOT_BRIDGE_SECRET` shared through secret storage.
+- Product decision for web photo pricing; current bot semantics remain one shared trial or five paid credits for photo setup.
+- A reachable HTTPS Core URL for the bot host and a manual cutover window.
 - Device QA with real sanitized tasks before enabling the photo input or public beta.
 
 No live migration or paid AI request is authorized by this document.

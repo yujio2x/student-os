@@ -12,13 +12,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.ai_service import StudyService
 from app.auth import SESSION_COOKIE, SessionService
+from app.bridge_auth import BridgeAuthError, BridgeAuthenticator, BridgeRateLimitError
 from app.config import Settings, load_settings
 from app.database import (
     AdminActionConflict, Database, DeadlineConflictError, ExternalIdentityConflict,
     LessonConflictError,
 )
 from app.entitlements import (
-    InsufficientCredits, LocalEntitlementService, ReservationConflict,
+    PRODUCTS, InsufficientCredits, InvalidProduct, PaymentConflict,
+    ReservationConflict, UnifiedEntitlementService,
 )
 from app.export_service import ExportTooLargeError, OwnedDataExportService
 from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportError, ScheduleImportService
@@ -115,6 +117,45 @@ class UnlimitedAdjustment(BaseModel):
     request_id: str = Field(min_length=8, max_length=128)
 
 
+class TrialAdjustment(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    request_id: str = Field(min_length=8, max_length=128)
+
+
+class BridgeTelegramUser(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    telegram_user_id: int = Field(gt=0)
+    username: str = Field(default="", max_length=80)
+    display_name: str = Field(default="", max_length=160)
+
+
+class BridgeIdentityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    telegram: BridgeTelegramUser
+
+
+class BridgeTextRequest(BridgeIdentityRequest):
+    assignment: str = Field(min_length=3, max_length=12_000)
+    subject: str = Field(default="", max_length=120)
+    title: str = Field(default="", max_length=160)
+    request_id: str = Field(min_length=8, max_length=128)
+
+    @field_validator("assignment")
+    @classmethod
+    def bridge_assignment_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("assignment must contain visible text")
+        return value.strip()
+
+
+class BridgePaymentRequest(BridgeIdentityRequest):
+    charge_id: str = Field(min_length=1, max_length=180)
+    product_id: str = Field(min_length=1, max_length=40)
+    stars_paid: int = Field(gt=0, le=1_000_000)
+
+
 class PreferencesUpdate(BaseModel):
     theme: str = Field(pattern="^(light|dark)$")
     schedule_view: str = Field(pattern="^(week|day)$")
@@ -176,7 +217,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     telegram = TelegramLoginVerifier(
         config.telegram_bot_token, config.telegram_auth_max_age_seconds
     )
-    entitlements = LocalEntitlementService(database, config.entitlement_source)
+    entitlements = UnifiedEntitlementService(database, config.entitlement_source)
+    bridge = BridgeAuthenticator(
+        database, config.bot_bridge_secret, config.bot_bridge_max_age_seconds
+    )
     owned_export = OwnedDataExportService(database)
 
     @asynccontextmanager
@@ -194,6 +238,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessions = sessions
     app.state.telegram = telegram
     app.state.entitlements = entitlements
+    app.state.bridge = bridge
     app.state.owned_export = owned_export
 
     def current_session(request: Request) -> dict:
@@ -227,6 +272,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not supplied or not secrets.compare_digest(supplied, session["csrf_token"]):
             raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
         return session
+
+    async def bridge_request(request: Request) -> None:
+        if not config.bot_bridge_secret:
+            raise HTTPException(status_code=503, detail="Bridge is not configured")
+        try:
+            bridge.verify(
+                request.headers.get("X-Bridge-Timestamp", ""),
+                request.headers.get("X-Bridge-Nonce", ""),
+                request.headers.get("X-Bridge-Signature", ""),
+                await request.body(),
+            )
+        except BridgeRateLimitError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except BridgeAuthError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    def resolve_bridge_user(telegram_user: BridgeTelegramUser) -> dict:
+        return database.telegram_login_user(
+            str(telegram_user.telegram_user_id),
+            telegram_user.username.strip(),
+            telegram_user.display_name.strip(),
+        )
+
+    def purchase_url() -> str:
+        username = config.telegram_bot_username
+        if not username or not username.replace("_", "").isalnum():
+            return ""
+        return f"https://t.me/{username}?start=buy"
+
+    def run_study(user_id: str, payload: StudyRequest) -> dict:
+        entitlement = app.state.entitlements.get_balance(user_id)
+        if not entitlement["connected"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Student AI готов к подключению, но unified ledger пока недоступен",
+            )
+        try:
+            reservation = app.state.entitlements.reserve_credit(user_id, payload.request_id)
+            if reservation.get("reused"):
+                raise ReservationConflict("Этот запрос Student AI уже обрабатывался")
+        except InsufficientCredits as exc:
+            raise HTTPException(status_code=402, detail="Недостаточно credits Student AI") from exc
+        except ReservationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        try:
+            study_result = app.state.study.analyze(
+                payload.assignment, payload.subject, payload.title
+            )
+            result = study_result.to_dict()
+            input_tokens, output_tokens = study_result.usage()
+            app.state.entitlements.commit_usage(
+                payload.request_id, input_tokens, output_tokens
+            )
+            database.record_event(user_id, "student_ai_used")
+            return result
+        except Exception as exc:
+            try:
+                app.state.entitlements.release_reservation(payload.request_id)
+            except ReservationConflict:
+                pass
+            raise HTTPException(
+                status_code=502,
+                detail="AI analysis failed safely; entitlement was restored",
+            ) from exc
 
     def issue_browser_session(response: Response, user: dict, mode: str) -> dict:
         issued = sessions.issue(user["id"])
@@ -328,6 +437,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if telegram_identity
             else {"connected": False, "source": "telegram-required"}
         )
+        entitlement = {
+            **entitlement,
+            "products": list(PRODUCTS.values()),
+            "purchase_url": purchase_url(),
+        }
         return {
             "lessons": database.lessons(user_id),
             "deadlines": database.deadlines(user_id),
@@ -342,6 +456,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "identity": telegram_identity,
             },
             "student_ai_entitlement": entitlement,
+        }
+
+    @app.get("/api/student-ai/entitlement")
+    def student_ai_entitlement(session: dict = Depends(current_session)) -> dict:
+        if database.telegram_identity(session["user_id"]) is None:
+            raise HTTPException(status_code=403, detail="Telegram account is required")
+        return {
+            **app.state.entitlements.get_balance(session["user_id"]),
+            "products": list(PRODUCTS.values()),
+            "purchase_url": purchase_url(),
         }
 
     @app.get("/api/export")
@@ -373,37 +497,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=403,
                 detail="Войдите через Telegram, чтобы использовать Student AI",
             )
-        entitlement = app.state.entitlements.get_balance(user_id)
-        if not entitlement["connected"]:
-            raise HTTPException(
-                status_code=409,
-                detail="Student AI готов к подключению, но источник credits пока не подключён",
-            )
+        return run_study(user_id, payload)
+
+    @app.post("/api/internal/v1/products")
+    def bridge_products(_: None = Depends(bridge_request)) -> dict:
+        return {"products": list(PRODUCTS.values())}
+
+    @app.post("/api/internal/v1/identity/resolve")
+    def bridge_resolve_identity(
+        payload: BridgeIdentityRequest, _: None = Depends(bridge_request),
+    ) -> dict:
+        user = resolve_bridge_user(payload.telegram)
+        return {
+            "user": {"id": user["id"], "display_name": user["display_name"]},
+            "entitlement": app.state.entitlements.get_balance(user["id"]),
+        }
+
+    @app.post("/api/internal/v1/entitlement")
+    def bridge_entitlement(
+        payload: BridgeIdentityRequest, _: None = Depends(bridge_request),
+    ) -> dict:
+        user = resolve_bridge_user(payload.telegram)
+        return {
+            "user_id": user["id"],
+            "entitlement": app.state.entitlements.get_balance(user["id"]),
+        }
+
+    @app.post("/api/internal/v1/study/text")
+    def bridge_study_text(
+        payload: BridgeTextRequest, _: None = Depends(bridge_request),
+    ) -> dict:
+        user = resolve_bridge_user(payload.telegram)
+        result = run_study(
+            user["id"],
+            StudyRequest(
+                assignment=payload.assignment,
+                subject=payload.subject,
+                title=payload.title,
+                request_id=payload.request_id,
+            ),
+        )
+        return {
+            "user_id": user["id"],
+            "result": result,
+            "entitlement": app.state.entitlements.get_balance(user["id"]),
+        }
+
+    @app.post("/api/internal/v1/payments/telegram-stars")
+    def bridge_telegram_payment(
+        payload: BridgePaymentRequest, _: None = Depends(bridge_request),
+    ) -> dict:
+        user = resolve_bridge_user(payload.telegram)
         try:
-            reservation = app.state.entitlements.reserve_credit(user_id, payload.request_id)
-            if reservation.get("reused"):
-                raise ReservationConflict("Этот запрос Student AI уже обрабатывался")
-        except InsufficientCredits as exc:
-            raise HTTPException(status_code=402, detail="Недостаточно credits Student AI") from exc
-        except ReservationConflict as exc:
+            payment = app.state.entitlements.record_telegram_payment(
+                user["id"], str(payload.telegram.telegram_user_id), payload.charge_id,
+                payload.product_id, payload.stars_paid,
+            )
+        except InvalidProduct as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except PaymentConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        try:
-            study_result = app.state.study.analyze(
-                payload.assignment, payload.subject, payload.title
-            )
-            result = study_result.to_dict()
-            input_tokens, output_tokens = study_result.usage()
-            app.state.entitlements.commit_usage(
-                payload.request_id, input_tokens, output_tokens
-            )
-            database.record_event(user_id, "student_ai_used")
-            return result
-        except Exception as exc:
-            try:
-                app.state.entitlements.release_reservation(payload.request_id)
-            except ReservationConflict:
-                pass
-            raise HTTPException(status_code=502, detail="AI analysis failed safely; no deadline was saved") from exc
+        return {
+            "payment": payment,
+            "entitlement": app.state.entitlements.get_balance(user["id"]),
+        }
 
     @app.post("/api/lessons", status_code=201)
     def create_lesson(payload: LessonInput, session: dict = Depends(csrf_session)) -> dict:
@@ -515,7 +672,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/admin/overview")
     def admin_overview(session: dict = Depends(admin_session)) -> dict:
-        return {**database.admin_overview(), "entitlement_connected": config.entitlement_source == "local"}
+        return {
+            **database.admin_overview(),
+            "entitlement_connected": config.entitlement_source in {"core", "local"},
+        }
 
     @app.get("/api/admin/users")
     def admin_users(
@@ -551,7 +711,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return database.admin_actions(None, limit, offset)
 
     def require_connected_entitlements() -> None:
-        if config.entitlement_source != "local":
+        if config.entitlement_source not in {"core", "local"}:
             raise HTTPException(status_code=409, detail="Источник credits пока не подключён")
 
     @app.post("/api/admin/users/{user_id}/credits")
@@ -592,6 +752,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if enabled is None:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         return {"unlimited": enabled}
+
+    @app.post("/api/admin/users/{user_id}/trial")
+    def restore_trial(
+        user_id: str, payload: TrialAdjustment,
+        session: dict = Depends(admin_csrf_session),
+    ) -> dict:
+        require_connected_entitlements()
+        if database.admin_user(user_id) is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        entitlements.get_balance(user_id)
+        try:
+            restored = database.admin_restore_trial(
+                session["user_id"], user_id, payload.reason.strip(), payload.request_id
+            )
+        except AdminActionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if restored is None:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        return {"free_trial_available": restored}
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")

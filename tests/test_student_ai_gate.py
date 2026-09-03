@@ -80,7 +80,7 @@ def test_linked_user_reaches_honest_unconnected_entitlement_gate(tmp_path: Path)
     try:
         response = client.post("/api/study/analyze", json=payload())
         assert response.status_code == 409
-        assert "не подключён" in response.json()["detail"]
+        assert "недоступен" in response.json()["detail"]
         assert spy.calls == 0
         with app.state.database.connection() as db:
             assert db.execute("SELECT COUNT(*) FROM ai_credit_reservations").fetchone()[0] == 0
@@ -102,7 +102,9 @@ def test_linked_connected_user_reserves_commits_and_blocks_duplicate(tmp_path: P
         assert response.status_code == 200
         assert duplicate.status_code == 409
         assert spy.calls == 1
-        assert app.state.entitlements.get_balance(user_id)["balance"] == 0
+        entitlement = app.state.entitlements.get_balance(user_id)
+        assert entitlement["balance"] == 1
+        assert entitlement["free_trial_available"] is False
         with app.state.database.connection() as db:
             assert db.execute(
                 "SELECT status FROM ai_credit_reservations WHERE request_id='same-request'"

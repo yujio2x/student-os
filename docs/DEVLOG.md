@@ -632,3 +632,46 @@ Browser QA:
 Known limitation: another inaccessible stale local process occupied `127.0.0.1:8000` during QA, so the current checkout was exercised on isolated local port 8001. The application route and configuration path are identical; no deployment or live configuration was changed.
 
 Next: commit and push this regression-only checkpoint. Begin the unified ledger/bridge work only from that green state.
+
+## 2026-09-03 - Unified ledger and signed Core bridge
+
+Goal: make Student OS Core the forward-looking source of truth before changing the Telegram bot.
+
+Starting HEAD: `49c089573188da0f78e06b7220d70082fb462e19` on clean synchronized `main`; CI was green.
+
+Implementation:
+
+- Expanded one transactional entitlement boundary to own the shared free trial, paid credits, unlimited state, amount-aware reservations, access source, token totals, and commit/release timestamps.
+- Added the authoritative Telegram Stars catalog matching the audited bot source: `task_help_1_v1` = 25 Stars / 1 credit and `task_help_5_v1` = 100 Stars / 5 credits.
+- Added idempotent payment accounting keyed by Telegram payment charge ID. Product, expected Stars, and granted credits are resolved only in Core.
+- Added narrow signed Core operations for products, Telegram identity resolution, entitlement lookup, canonical text analysis, and successful Stars delivery. Telegram requests never select an internal UUID.
+- Added a Web purchase handoff to Telegram `/start buy`, explicit balance refresh, focus/visibility refresh without polling, and honest trial/balance/unlimited state.
+- Connected admin overview/user detail to reservations, success/release counts, Stars totals, outstanding credits, unlimited users, token totals and payments; added audited trial restoration.
+- Changed the service worker shell strategy to network-first with offline cache fallback and versioned critical assets, preventing stale admin/application JavaScript after an update.
+
+Security:
+
+- Bridge authentication uses HMAC-SHA-256 over timestamp, nonce and exact body, constant-time comparison, bounded freshness/body size, durable replay rejection, and a per-process rate ceiling.
+- Missing bridge secret fails closed with 503. Browser session/CSRF credentials are not bridge credentials.
+- Balance cannot become negative; duplicate request, duplicate payment and all admin mutations are transactional and idempotent at their respective keys.
+- No production secrets or legacy bot data were copied. The live bot and its database were not changed in this phase.
+
+Tests: 79 Student OS tests passed; Python compilation, application/admin JavaScript syntax and diff checks passed. New tests cover shared-trial release/race behavior, unlimited non-decrement, identity stability, exact products, duplicate/wrong/unknown payments, canonical semantic result, token commit, bad HMAC, stale timestamp, replay, tampering, and unconfigured bridge.
+
+Attack checks: verified duplicate charge cannot double-credit; a reused charge ID cannot be rebound; a duplicate AI request does not rerun the engine; failed AI restores the trial; arbitrary product/amount/internal user fields are rejected; bad/stale/replayed/tampered signatures fail.
+
+Browser QA: on isolated local port 8001, development owner opened the updated admin, loaded overview/users/feedback/audit, and opened unified user detail with trial/usage/payment controls. The connected Web fixture showed one free attempt, the Telegram deep link, manual refresh, and focus refresh; a real demo analysis consumed the shared trial and rendered checks plus `Как защитить`. Desktop width remained contained.
+
+Changed files: configuration, database schema/migrations, unified entitlement service, HMAC bridge authentication, Core routes/models, Web Student AI purchase/refresh UI, admin UI, service worker, tests, README and architecture/deployment/Telegram documents.
+
+Commit: pending.
+
+Push: pending.
+
+CI: pending.
+
+Limitations: bot adapter/outbox is not yet changed; bridge remains unused by the live bot. Photo UI remains disabled. The existing inaccessible process still owns localhost port 8000, so this checkout's browser QA uses port 8001.
+
+Blockers: live cutover still needs a production Core URL plus a shared secret installed in both services; this does not block implementation/testing.
+
+Next: commit and push this Core checkpoint, confirm CI, then add the default-off bot adapter and durable outbox without overwriting its pre-existing `app/bot.py` edits.

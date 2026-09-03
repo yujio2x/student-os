@@ -9,7 +9,10 @@ from app.database import Database
 from app.entitlements import InsufficientCredits, LocalEntitlementService, ReservationConflict
 
 
-def service_with_user(tmp_path: Path, balance: int = 0, unlimited: bool = False):
+def service_with_user(
+    tmp_path: Path, balance: int = 0, unlimited: bool = False,
+    trial_available: bool = False,
+):
     database = Database(tmp_path / "credits.db")
     database.initialize()
     user = database.create_user("Credits test")
@@ -17,8 +20,9 @@ def service_with_user(tmp_path: Path, balance: int = 0, unlimited: bool = False)
     service.get_balance(user["id"])
     with database.connection() as db:
         db.execute(
-            "UPDATE ai_entitlements SET balance=?, unlimited=? WHERE user_id=?",
-            (balance, int(unlimited), user["id"]),
+            """UPDATE ai_entitlements
+            SET balance=?, unlimited=?, free_trial_available=? WHERE user_id=?""",
+            (balance, int(unlimited), int(trial_available), user["id"]),
         )
     return database, service, user["id"]
 
@@ -77,6 +81,25 @@ def test_concurrent_reserve_cannot_double_spend(tmp_path: Path) -> None:
 
     assert sorted(results) == ["insufficient", "reserved"]
     assert service.get_balance(user_id)["balance"] == 0
+
+
+def test_shared_trial_is_atomic_and_failure_restores_it(tmp_path: Path) -> None:
+    _, service, user_id = service_with_user(tmp_path, trial_available=True)
+    first = service.reserve_credit(user_id, "trial-one")
+    assert first["entitlement_source"] == "trial"
+    assert service.get_balance(user_id)["free_trial_available"] is False
+    with pytest.raises(InsufficientCredits):
+        service.reserve_credit(user_id, "trial-two")
+    service.release_reservation("trial-one")
+    assert service.get_balance(user_id)["free_trial_available"] is True
+
+
+def test_unlimited_never_decrements_paid_balance(tmp_path: Path) -> None:
+    _, service, user_id = service_with_user(tmp_path, balance=3, unlimited=True)
+    reservation = service.reserve_credit(user_id, "unlimited-request")
+    service.commit_usage("unlimited-request")
+    assert reservation["entitlement_source"] == "unlimited"
+    assert service.get_balance(user_id)["balance"] == 3
 
 
 def test_legacy_reservations_gain_token_accounting_columns(tmp_path: Path) -> None:

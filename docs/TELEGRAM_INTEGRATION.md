@@ -44,7 +44,7 @@ Owned-таблицы используют internal `user_id` из провере
 
 Нельзя принимать Telegram ID или баланс credits из непроверенного browser payload. Bot token, OpenAI key и session secrets хранятся только в environment/secrets storage.
 
-## Credits integration
+## Unified credits integration
 
 Рекомендуемая граница — отдельный `StudentAIEntitlementService` в application layer:
 
@@ -53,7 +53,9 @@ Owned-таблицы используют internal `user_id` из провере
 - `commit_usage(request_id)`;
 - `release_reservation(request_id)`.
 
-Первый adapter может работать с существующим ledger `student-ai-bot`, но Student AI не должен напрямую импортировать Telegram handlers или payment UI. Операции должны быть идемпотентными по `request_id`, чтобы retry не списывал credits дважды.
+Student OS Core — новый source of truth для trial, credits, unlimited, reservations, token totals и Telegram Stars payments. Старый bot SQLite остаётся archive/rollback reference и не мигрируется автоматически.
+
+Telegram adapter вызывает узкий `/api/internal/v1/*` API с HMAC-SHA-256 подписью timestamp + nonce + exact body. Core проверяет freshness/replay, сам resolve'ит internal UUID по Telegram ID и не принимает `user_id`, цену или число начисляемых credits от adapter. Операции AI идемпотентны по `request_id`, платежи — по `telegram_payment_charge_id`.
 
 ## Cloud backup and sync
 
@@ -72,8 +74,9 @@ Owned-таблицы используют internal `user_id` из провере
 1. ✅ Добавить серверные users/sessions и проверку Telegram login payload.
 2. ✅ Заменить `local-demo-user` на identity из session dependency.
 3. ✅ Добавить Telegram account link и локальную adapter boundary к credits ledger.
-4. Подключить cloud persistence и миграцию локальных данных после подтверждения пользователем.
-5. Провести отдельный security review: replay, session fixation, CSRF, user isolation, duplicate charging и account unlink/relink.
+4. ✅ Добавить unified ledger, HMAC bridge и authoritative Stars catalog.
+5. Подключить default-off Telegram adapter с durable payment outbox и провести ручной cutover.
+6. Подключить cloud persistence только в отдельном scope.
 
 ## Ещё не подключено
 
