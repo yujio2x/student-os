@@ -1133,3 +1133,30 @@ stg config and rerun preflight. Only then continue Core deployment/readiness wit
 worker=0. Earlier login blocker is resolved; OIDC configuration is the remaining gate.
 Core tracked tree clean after this docs-only checkpoint; bot's original owner edits
 and assets/outputs remain untouched. No further atomic unit started at low usage.
+
+## 2026-09-04 — OIDC owner step resolved; independent monitoring hardening
+
+Resumed Core 96243bd / bot 0284aa8 without repeating PostgreSQL/outbox architecture work.
+Official Telegram flow verified at https://core.telegram.org/bots/telegram-login:
+BotFather mini app -> existing bot -> Login Widget -> Allowed URLs and separate Client
+ID/Secret. Owner completed the requested direct Doppler configuration, not chat transfer.
+Read-only actual destination preflight now has no missing/invalid fields; exact HTTPS
+callback and owner ID match, all Doppler values match Heroku. DATABASE_URL remains only
+Heroku-managed. APP_ENV is still staging, so production preflight gate is NOT satisfied.
+Action review rejected the requested production-mode write; no write/deploy performed.
+Explicit owner confirmation requested for production mode and Core deployment.
+
+Sentry: existing authorized Education organization yujio2x had no projects. Created
+student-os error-only project; logging/tracing/profiling/metrics not selected. New DSN
+was kept in browser memory and entered in an unsaved Core Doppler form, never printed
+or written to local files. Action review blocked Save pending explicit authorization
+for this new credential. No SENTRY_DSN saved, no real synthetic event sent, no Bot Sentry
+project created yet. Core/Bot DSN storage and synthetic-event permission requested.
+
+Independent code fix: Sentry scrubber formerly discarded environment/service metadata.
+Now preserves only fixed safe labels and rejects unhashable categories without leaking
+data. Tests use real SDK memory transport; no user content leaves the process. Core
+full suite 110 passed / 25 expected PG skips; focused OIDC/cloud/privacy 11 passed.
+Bot config preflight passed on real one-off Eco runtime, no polling; optional deployed
+storage probe added in bot source pending release. No local bot restart, DNS switch,
+Core deployment or cutover. Owner branding/assets remain preserved in bot checkout.
