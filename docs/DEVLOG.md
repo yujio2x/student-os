@@ -1056,3 +1056,38 @@ pending attempts interrupted. Read-only projects command confirms no CLI token y
 Next: owner performs one-time doppler login scoped to the Core checkout, keeping
 codes/tokens out of chat. Then allowlisted local credentials -> Doppler stg configs
 directly in memory; never upload entire .env or managed DATABASE_URL. Continue deploy.
+
+## 2026-09-04 — Independent migration work while owner is away
+
+Doppler CLI login explicitly BLOCKED_BY_OWNER. No repeated login/audit, no runtime
+secret migration, no config-var or existing In Sync integration changes. DATABASE_URL
+untouched. No live bot restart/cutover and no additional paid resources.
+
+Core: Python 3.12 pin/slug exclusions, production ASGI entrypoint with optional generic
+error reporting. Both apps: environment-only preflight with no dotenv/DB/network and
+key-name-only failures; opt-in Sentry reconstructs category-only events, disables auto
+integrations/PII/tracing/stack/local capture. Real SDK memory-transport privacy tests
+prove hostile request/header/user/homework/exception data is excluded; no live Sentry
+project/DSN configured. CI pins bot 57c205a: cloud-only fail-closed worker and durable
+Eco background backoff, including storage-backed retry regression.
+
+Domain preparation: enabled free Eco ACM. CLI 7.53.0 domain create failed because it
+omits required sni_endpoint; no domain was created by those attempts. Bounded official
+API call with existing Heroku authentication and null SNI added only student-os.dev.
+Actual DNS target triangular-quince-o3z6hou8rvdwxkc3dcna64jv.herokudns.com; pending DNS.
+DNS deliberately unchanged until Core runtime is configured/healthy. No certificate
+issuance or working public HTTPS claimed. No auth credentials emitted/stored.
+
+TEST/ATTACK: Core full suite with current bot root 109 passed, 25 expected PG skips;
+real-Heroku PostgreSQL outbox -> Core ambiguous-commit regression 1 passed in 70s;
+bot full suite 89 tests/4 PG skips, separate pre-existing real persistence cases 6
+passed in 132s. PostgreSQL backoff coverage added to dedicated CI. Compile, staged
+secret-pattern and diff checks plus Node PWA runtime checks pass. No UI change, so
+no redundant local browser check. Real HTTPS/BrowserStack remains not executed.
+
+CLOUD_READINESS_CHECKPOINT.md contains exact domain/config boundaries, five-part
+HTTPS/device acceptance matrix, ordered deploy/rollback and exact owner login command.
+Core deploy/runtime/OIDC/cloud synthetic/real-device acceptance BLOCKED_BY_DOPPLER_LOGIN
+or absent external credentials. Next: verify bot build with worker=0 where possible,
+record CI/deployment results; after owner login migrate allowlisted secrets directly
+to existing stg configs and preflight Core before web deployment. Never enable polling.

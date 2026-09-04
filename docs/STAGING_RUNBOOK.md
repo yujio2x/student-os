@@ -1,5 +1,8 @@
 # Staging migration — no cutover until every gate passes
 
+Current owner-away checkpoint and exact remaining gates:
+[CLOUD_READINESS_CHECKPOINT](CLOUD_READINESS_CHECKPOINT.md).
+
 Selected topology: see CLOUD_COSTS.md. One shared Essential-0, separate personal
 Cedar Eco apps in eu. Never provision a second database for the bot.
 

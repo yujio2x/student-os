@@ -8,3 +8,4 @@ uvicorn[standard]>=0.35,<1.0
 PyJWT[crypto]>=2.10,<3.0
 Pillow>=11.0,<13.0
 psycopg[binary]>=3.2,<4.0
+sentry-sdk>=2.68,<3.0
