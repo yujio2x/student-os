@@ -1091,3 +1091,14 @@ Core deploy/runtime/OIDC/cloud synthetic/real-device acceptance BLOCKED_BY_DOPPL
 or absent external credentials. Next: verify bot build with worker=0 where possible,
 record CI/deployment results; after owner login migrate allowlisted secrets directly
 to existing stg configs and preflight Core before web deployment. Never enable polling.
+
+Final external checkpoint: Core code 29393cf CI run 33870953687 GREEN (test + postgres);
+bot 57c205a run 33870851244 GREEN (tests + postgres-outbox, including persisted backoff).
+Bot tested commit deployed successfully to existing Heroku app as release v5, Python
+3.12.14 / worker-only Procfile. Explicit worker=0:Eco applied; ps confirmed No dynos.
+No worker polling or local restart. Core not deployed because runtime credentials are
+still missing. Domain pending DNS/ACM issuance, not a working HTTPS app. DEVLOG and
+checklist are the handoff; no further independent deployment action is safe now.
+Core clean after commit; bot retains only the owner's original branding/assets/outputs.
+Exact next action is owner login in CLOUD_READINESS_CHECKPOINT.md, then migrate only
+allowlisted credentials via existing syncs and preflight/deploy Core with worker=0.

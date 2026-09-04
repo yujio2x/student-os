@@ -9,6 +9,12 @@ resources, cloud polling, live bot restart or cutover. Existing Windows bot stay
 
 ## Build and configuration boundary
 
+Verified checkpoint: bot code 57c205a built successfully in Heroku release v5, Python
+3.12.14; explicitly worker=0:Eco, no dynos. Core 29393cf and bot 57c205a GitHub CI GREEN,
+including both PostgreSQL jobs. Core web has NOT been deployed. These are build/test
+results, not live bridge/Telegram/OIDC acceptance. Final documentation-only commits may
+follow those code revisions without changing the deployed artifact.
+
 Both repositories pin Python 3.12; slug exclusions keep local environments, databases,
 logs and tests out of runtime artifacts. Core uses app.cloud_web:application with
 Uvicorn access logging disabled. Bot uses app.cloud_worker, not legacy app.bot: the
