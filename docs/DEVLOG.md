@@ -1,5 +1,36 @@
 # Student OS engineering DEVLOG
 
+## 2026-09-04 — Option A subscription and empty Heroku apps
+
+Owner selected Eco Web + separate worker-only Eco bot + Essential-0, $10/month
+target, no Basic upgrade. Verified official prices and monthly credit limit ($13,
+not an unrestricted $312 balance). Dashboard initially showed $312 credits and $0
+usage. After explicit action-time acceptance of Eco terms, subscription succeeded:
+1000 hours available, 0 used, $5/month recurring plan. See CLOUD_COSTS.md for limits.
+
+Created empty personal Cedar/heroku-24 applications in Europe using the authenticated
+Heroku CLI: `student-os-ernar-beta` and `student-ai-bot-ernar-beta`.
+No code deployed, no dyno process types/polling launched, no database provisioned.
+Core remote HEAD matched `c41b665`; bot local HEAD `f6e4552`, original dirty files intact.
+CLI creation added Heroku Git remotes only; origin remains unchanged.
+
+Postgres Essential-0 is $5/month in CLI, Marketplace and dashboard order form.
+The final order form introduces acceptance of the add-on provider terms and Salesforce
+MSA. It has NOT been submitted: action-time confirmation remains necessary for that
+separate order. No credentials read/copied, no Doppler config or DNS changes.
+
+Code audit: Core directly uses SQLite across database/entitlement/photo/OIDC/restore
+services; cloud persistence is not implemented yet. Local PostgreSQL/Docker binaries
+were not found at checked standard locations. Proposed next implementation: explicit
+psycopg repository adapter, versioned transactional schema, bounded connections and
+PostgreSQL concurrency tests before deployment. Never deploy current SQLite backend
+as cloud persistence. Existing local bot remains untouched and running as before.
+
+Validation for this checkpoint: documentation-only diff check; no application code
+changed, no new runtime test result claimed. CI will execute the existing suite on push.
+Exact next action: confirm Essential-0 order terms, provision only the selected $5 plan,
+then implement/test PostgreSQL Core and outbox while cloud bot remains undeployed/off.
+
 ## 2026-09-04 — PWA eligibility and final beta handoff
 
 Starting checkpoint `a4e48fd` (Core CI GREEN); bot remains `f6e4552` (CI GREEN).
