@@ -1295,3 +1295,19 @@ Exact next step: confirm the newest Telegram request within five minutes; inspec
 callback and verify the owner's persisted identity/role without logging credentials.
 If that request expires, start a new browser login with owner present; never extend or
 bypass state expiry just to pass the gate. Worker=0 and no cutover until all gates green.
+## 2026-09-05 — Safe OIDC failure-stage instrumentation
+
+Fresh five-hour budget verified at 95% remaining before overnight work. Repository and
+CI truth: Core 38cccd0 clean and CI 33902518210 green; Bot 6a6fdd2 retains only the
+known owner branding/assets/output changes. Cloud Bot remains zero; legacy bot intact.
+
+Implemented privacy-preserving OIDC diagnostics for the unresolved real callback.
+Only two constant allowlisted Sentry categories can leave the process:
+oidc_exchange_failed (HTTP/token response stage) or oidc_verify_failed (JWKS/JWT
+validation stage). No status body, URL, code, state, verifier, token, claim/profile,
+cookie, session, CSRF, header, exception text or local variable is attached. Existing
+Sentry reconstruction still drops every non-allowlisted event surface. Validation
+semantics (RS256, issuer, audience, exp/iat, numeric positive ID, PKCE and one-time
+state) are unchanged. Focused privacy/OIDC tests: 8 passed. First test failure was a
+fixture using a non-httpx constructor exception; corrected to httpx.ConnectError and
+rerun green. Full suite and live deployment follow this entry.

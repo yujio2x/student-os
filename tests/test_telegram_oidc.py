@@ -1,9 +1,10 @@
 import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import jwt
+import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -99,3 +100,28 @@ def test_real_rs256_signature_claims_and_forgery(tmp_path):
             app.state.oidc.verify_token(encode({**claims, **changes}))
     with pytest.raises(OIDCError):
         app.state.oidc.verify_token(jwt.encode(claims, "synthetic-not-rsa-test-secret-long-enough", algorithm="HS256"))
+
+
+def test_exchange_reports_only_allowlisted_failure_stage(tmp_path):
+    app = configured_app(tmp_path)
+    oidc = app.state.oidc
+    with patch("app.telegram_oidc.httpx.Client", side_effect=httpx.ConnectError("private code")), \
+         patch("app.telegram_oidc.report") as report:
+        with pytest.raises(OIDCError):
+            oidc.exchange("private-code", "private-verifier")
+        report.assert_called_once_with("oidc_exchange_failed")
+    response = Mock()
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=False)
+    response.raise_for_status.return_value = None
+    response.iter_bytes.return_value = [b'{"id_token":"private-token"}']
+    client = Mock()
+    client.__enter__ = Mock(return_value=client)
+    client.__exit__ = Mock(return_value=False)
+    client.stream.return_value = response
+    with patch("app.telegram_oidc.httpx.Client", return_value=client), \
+         patch.object(oidc, "verify_token", side_effect=OIDCError("private claim")), \
+         patch("app.telegram_oidc.report") as report:
+        with pytest.raises(OIDCError):
+            oidc.exchange("private-code", "private-verifier")
+        report.assert_called_once_with("oidc_verify_failed")

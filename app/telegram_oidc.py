@@ -10,6 +10,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 import jwt
+from app.observability import report
 
 ISSUER = "https://oauth.telegram.org"
 LOGIN_COOKIE = "student_os_telegram_login"
@@ -97,9 +98,14 @@ class TelegramOIDC:
                             raise OIDCError("invalid")
                         raw.extend(chunk)
             token = json.loads(raw)["id_token"]
-            return self.verify_token(token)
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            report("oidc_exchange_failed")
             raise OIDCError("unavailable") from None
+        try:
+            return self.verify_token(token)
+        except OIDCError:
+            report("oidc_verify_failed")
+            raise
 
     def verify_token(self, token):
         try:

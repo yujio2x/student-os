@@ -55,3 +55,7 @@ class SafeEventsTest(unittest.TestCase):
         with patch.dict(os.environ, {"SENTRY_DSN":"https://public@example.invalid/1", "SENTRY_ENVIRONMENT":"private-token"}):
             with self.assertRaisesRegex(ValueError, '^Invalid observability environment$'):
                 monitoring.initialize("core")
+        self.assertEqual(
+            {"oidc_exchange_failed", "oidc_verify_failed"} - monitoring.CATEGORIES,
+            set(),
+        )
