@@ -1311,3 +1311,29 @@ semantics (RS256, issuer, audience, exp/iat, numeric positive ID, PKCE and one-t
 state) are unchanged. Focused privacy/OIDC tests: 8 passed. First test failure was a
 fixture using a non-httpx constructor exception; corrected to httpx.ConnectError and
 rerun green. Full suite and live deployment follow this entry.
+
+Full Core suite: 115 passed / 25 expected PostgreSQL skips, with the one known
+Starlette/httpx deprecation warning. Compile and diff checks passed. Commit 17c5f91
+was pushed; GitHub Actions run 33919636246 completed successfully. Heroku deployed
+the exact commit as Core release v12; Eco web is up and the public
+https://student-os.dev/api/health endpoint returns 200. ACM remains issued and trusted
+through 2026-12-03; HTTP still redirects to the configured HTTPS origin with 307.
+
+Public PWA preflight passed over the custom domain: manifest 200 with Student OS,
+standalone display, root start URL and three icons; root service worker 200 with the
+expected JavaScript content type. BrowserStack authenticated successfully and started
+a real Samsung Galaxy S24 / Android 14 / Chrome session. Its remote-device address
+bridge accepted the URL into the control field but did not dispatch navigation, so no
+claim is made for rendered mobile UI or authenticated device QA from this run. Do not
+substitute this partial session for the still-required real-device login/install proof.
+
+The deployed diagnostics require one new real callback to identify exchange versus
+JWKS/JWT verification failure. The owner is unavailable during this overnight run, so
+the callback, persisted Telegram identity 8247777174, production admin, logout/relogin
+and real replay/state gates remain red. No validation was weakened and no identity was
+fabricated. Consequently live cutover was not performed. Bot Heroku app still reports
+no dynos (worker=0), and the legacy live bot was not stopped or modified. No DNS,
+database, paid-resource or secret changes were made. Exact next step with the owner
+present: start one fresh Telegram login and confirm it within five minutes, then inspect
+Sentry for exactly one allowlisted stage category and fix only the proven stage before
+rerunning identity/admin/session/replay gates.
