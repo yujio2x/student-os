@@ -1261,6 +1261,19 @@ confirmation still pending; do not call login/admin verified. Next: confirm Tele
 then inspect real callback/session/owner admin without logging session/CSRF values.
 ## 2026-09-04 — Low-usage pre-cutover authentication gate
 
+Fresh owner confirmation arrived promptly, but browser again returned to login gate.
+Read-only DB now shows zero login attempts (state consumed) and owner identity still
+absent. This invalidates expiry as explanation for the FRESH attempt: failure is after
+consume, in code exchange/token verification (exact reason not yet established).
+Current exception mapping hides safe diagnostic stage. Do not change signature,
+audience, issuer, expiry, PKCE or owner checks to make this pass. Next bounded unit
+after verified reset: add/test strictly allowlisted failure-stage diagnostics without
+logging code/state/token/profile/secrets, then determine exchange versus JWKS/JWT
+failure using real runtime; obtain owner confirmation only if a new real flow needs it.
+Official Telegram manual flow matches current endpoint/auth/PKCE contract and documents
+RS256 as default; there is no evidence yet for changing algorithm or credentials.
+Successful callback, owner admin, logout/relogin and real replay remain NOT verified.
+
 Owner reported Telegram confirmation and authorized a conditional post-reset overnight
 run, maximum about four hours, cutover ONLY after every critical gate passes. Before
 reset keep cloud worker zero and legacy polling unchanged. No new paid/legal/access
