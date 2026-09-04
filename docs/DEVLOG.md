@@ -1036,3 +1036,23 @@ required before granting it. Do not interpret migration authorization as approva
 this account-wide security grant. Next exact action: obtain owner decision on that
 grant (or use a narrower manually controlled sync), then continue Doppler safely.
 Do not touch yujiodoublex-factory. All prior bot owner changes/assets remain uncommitted.
+
+## 2026-09-04 — Doppler Heroku sync configured
+
+Owner explicitly approved the account-wide OAuth grant and completed Allow manually
+after browser automation could not operate the Heroku approval page. Doppler connection
+1bee42c0-bccc-4f8d-8ffe-7398eba5c5d3 verified Enabled. Created exactly these two syncs:
+student-os/stg -> student-os-ernar-beta; student-ai-bot/stg -> student-ai-bot-ernar-beta.
+Both show In Sync. Import options None for each: no Heroku config import into Doppler.
+Post-sync read-only verification found DATABASE_URL plus only DOPPLER_CONFIG,
+DOPPLER_ENVIRONMENT and DOPPLER_PROJECT on both apps. Bot has no dynos.
+No runtime credentials migrated, no deployment, no new paid resource, no other sync.
+
+Official Doppler CLI 3.76.5 installed through winget (installer hash verified).
+Executable: %LOCALAPPDATA%/Microsoft/WinGet/Packages/Doppler.doppler_Microsoft.Winget.Source_8wekyb3d8bbwe/doppler.exe.
+CLI login with scope limited to the Core checkout generated an authorization code
+but did not open a page in the available browser. All auth output was suppressed;
+pending attempts interrupted. Read-only projects command confirms no CLI token yet.
+Next: owner performs one-time doppler login scoped to the Core checkout, keeping
+codes/tokens out of chat. Then allowlisted local credentials -> Doppler stg configs
+directly in memory; never upload entire .env or managed DATABASE_URL. Continue deploy.
