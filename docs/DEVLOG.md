@@ -1160,3 +1160,32 @@ full suite 110 passed / 25 expected PG skips; focused OIDC/cloud/privacy 11 pass
 Bot config preflight passed on real one-off Eco runtime, no polling; optional deployed
 storage probe added in bot source pending release. No local bot restart, DNS switch,
 Core deployment or cutover. Owner branding/assets remain preserved in bot checkout.
+## 2026-09-04 — Authorized production deployment and isolated monitoring smoke
+
+Owner explicitly authorized Core production mode/deployment and Sentry DSN storage
+in both existing Doppler stg configs. Latest restrictions: no DNS changes, no live
+Telegram cutover, cloud worker stays zero. No new resources/plans were provisioned.
+Production config preflight passed (secure cookies, dev login/admin off, Core ledger,
+OIDC fields present and matching expected callback). DATABASE_URL is unchanged and
+Heroku-managed only. Core 233513e built/released as v9: Eco web up, health HTTP 200.
+Bot fb64c2e built/released as v8; subsequent config releases may advance release IDs.
+Bot one-off --storage preflight passed CLOUD_IMPORTS_AND_POSTGRES_OUTBOX_OK_NO_POLLING.
+Both existing Sentry error-only projects now have DSNs saved directly to Doppler,
+with production environment and no replay/tracing/default integrations or PII enabled.
+
+Added explicit python -m app.monitoring_smoke core|bot for one constant synthetic
+event with bounded flush and generic failure output. Event ID is correlation only,
+not delivery evidence; Sentry UI verification is required. No app/polling import.
+Regression: Core 112 passed / 25 expected PG skips; Bot 93 tests / 4 PG skips.
+New smoke tests cover constant payload, bounded flush, missing config, private errors.
+Cloud acceptance runner in Bot confines writes to unique synthetic identity/payment,
+targets only the two approved apps, reads credentials in memory, and restarts Core
+only with explicit --exercise. It never retries unrelated pending outbox records.
+Actual signed health/catalog and six auth-negative checks passed. Synthetic lost
+response after committed payment, durable outbox reopen/retry and exactly-once credit
+passed. Evidence run: 57dffbbafb414bfc84c5b86ba9daff40. Core restart then passed:
+same user ID, payment row count one, balance one, unchanged migration version/checksum/
+applied_at. Catalog, entitlement and duplicate-payment delivery work after restart.
+This is an actual process-cold/restart test, NOT proof of a 30-minute Eco sleep wake.
+Custom-domain OIDC/browser/admin proof remains blocked by owner's explicit DNS hold.
+No local bot restart and no cloud polling were performed; owner edits stay untouched.
