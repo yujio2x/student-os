@@ -1,5 +1,7 @@
 """Production entry point with opt-in, content-free error reporting."""
+import os
 from app.observability import initialize, report
+from app.cloud_https import HerokuHTTPS
 from app.main import app
 
 initialize("core")
@@ -19,3 +21,5 @@ class OperationalErrors:
 
 
 application = OperationalErrors(app)
+if os.getenv("DYNO") and os.getenv("APP_ENV") in {"production", "staging"}:
+    application = HerokuHTTPS(application, os.environ["TELEGRAM_REDIRECT_URI"])

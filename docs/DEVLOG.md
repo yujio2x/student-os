@@ -1227,3 +1227,28 @@ applied_at. Catalog, entitlement and duplicate-payment delivery work after resta
 This is an actual process-cold/restart test, NOT proof of a 30-minute Eco sleep wake.
 Custom-domain OIDC/browser/admin proof remains blocked by owner's explicit DNS hold.
 No local bot restart and no cloud polling were performed; owner edits stay untouched.
+## 2026-09-04 — Owner-authorized DNS / ACM / OIDC entry
+
+Owner explicitly authorized apex DNS to the current Heroku target, keeping Bot=0,
+no cutover and no purchases. Name.com login required owner CAPTCHA/device-email
+confirmation; completed by owner. DNS table contained no user-created records.
+Added ONE ANAME, empty host (student-os.dev), TTL 300, target confirmed again by
+Heroku domains output: triangular-quince-o3z6hou8rvdwxkc3dcna64jv.herokudns.com.
+No records deleted, no nameserver changes. Saved Name.com record ID 288468758.
+Authoritative ns1bcp.name.com plus 1.1.1.1 and 8.8.8.8 returned Heroku addresses.
+ACM refresh completed: Cert issued, Let's Encrypt YR2, SAN student-os.dev,
+expires 2026-12-03. Python default trust/hostname validation passed TLS 1.3;
+https://student-os.dev/api/health HTTP 200. No certificate-warning bypass.
+
+Real browser OIDC reached official Telegram authorization for TaskMentorBot and
+existing owner account; Continue sent owner an in-app confirmation. Awaiting owner
+confirmation before calling OIDC/admin successful; no codes or auth tokens requested.
+Bot inspection: no dynos. Unauthenticated custom-domain admin correctly returns 401.
+
+Cloud smoke found HTTP served 200 instead of redirect. Added Heroku-only HTTPS
+boundary, enabled only with DYNO plus staging/production, preserving local mode.
+Heroku overwrites X-Forwarded-Proto (official guidance):
+https://help.heroku.com/J2R1S4T8/can-heroku-force-an-application-to-use-ssl-tls
+Redirect uses configured HTTPS callback origin, not attacker Host; preserves path/query
+and method via 307/no-store. HTTPS is passed through without a redirect loop. Tests
+cover spoofed Host, missing/ambiguous proto, path/query and HTTPS pass-through.
