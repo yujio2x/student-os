@@ -29,8 +29,9 @@ CI independently uses PostgreSQL 16 and the same regressions. SQLite remains cov
 
 ## Remaining preflight (not yet passed)
 
-1. Implement PostgreSQL bot outbox in its own table/schema, attach the SAME physical DB,
-   and prove outage/restart/idempotent delivery. Do not start cloud polling beforehand.
+1. Outbox code/isolated PostgreSQL outage/restart/idempotency tests passed in bot
+   6c6d425 and Core 933fe84; SAME DB attached to both apps. Cloud runtime acceptance
+   still required. Do not start cloud polling beforehand.
 2. Configure separate Doppler configs, Core-only AI key, shared strong bridge secret,
    Telegram OIDC and Sentry privacy filters. Preserve Heroku-managed DATABASE_URL.
 3. Deploy Core, verify migration/restart persistence; deploy bot with worker=0.

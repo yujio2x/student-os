@@ -1022,3 +1022,17 @@ Full Core suite 103 passed; new real-Heroku cross-project regression 1 passed (e
 abrupt child-process termination after durable enqueue. No real payment/AI/polling.
 Bot's pre-existing branding edits and untracked assets/outputs remain untouched.
 Next: Doppler configuration, same-DB attachment, deployment and remaining runbook gates.
+
+Infrastructure checkpoint: bot 6c6d425 and Core 933fe84 both GitHub CI GREEN (including
+both PostgreSQL jobs). Attached existing postgresql-animate-45477 to the bot app as
+DATABASE, release v3; no second database/paid resource. Created Doppler projects
+student-os and student-ai-bot, each with default stg config. No runtime secrets read
+or copied yet, no Heroku integration authorized, no code deployment/live polling.
+
+External authorization gate: Doppler's Heroku OAuth page requests identity read and
+write-protected access to ALL Heroku apps/resources including config vars/secrets.
+This is broader than the two Student apps. Allow was NOT clicked; owner confirmation
+required before granting it. Do not interpret migration authorization as approval for
+this account-wide security grant. Next exact action: obtain owner decision on that
+grant (or use a narrower manually controlled sync), then continue Doppler safely.
+Do not touch yujiodoublex-factory. All prior bot owner changes/assets remain uncommitted.

@@ -14,6 +14,8 @@ Owner approved Eco terms at action time. Subscription succeeded: $5/month,
 After separate owner approval of the database order terms, Essential-0 was provisioned:
 `postgresql-animate-45477`, attached to `student-os-ernar-beta` as Heroku-managed DATABASE.
 Its confirmed price is $5/month and state is created. No cloud bot polling has started.
+The SAME add-on is now also attached to student-ai-bot-ernar-beta as DATABASE;
+this is a second attachment, not a second database or additional paid plan.
 
 Student credits cover **up to $13 each month**, not an unrestricted $312 wallet.
 Unused monthly allowance expires; the program lasts 24 months. Expected cash cost
