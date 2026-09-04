@@ -1252,3 +1252,10 @@ https://help.heroku.com/J2R1S4T8/can-heroku-force-an-application-to-use-ssl-tls
 Redirect uses configured HTTPS callback origin, not attacker Host; preserves path/query
 and method via 307/no-store. HTTPS is passed through without a redirect loop. Tests
 cover spoofed Host, missing/ambiguous proto, path/query and HTTPS pass-through.
+Validation: full Core suite 114 passed / 25 expected PG skips; compile/diff/staged
+secret-pattern checks passed. Core d2cf2a7 pushed, CI 33901025793 successful, Heroku
+release v11 successful. Actual http://student-os.dev/ -> 307 https://student-os.dev/;
+both custom-domain and Heroku-origin HTTPS health 200, no redirect loop. Working tree
+clean after checkpoint; Bot source/runtime unchanged (worker=0). OIDC owner in-app
+confirmation still pending; do not call login/admin verified. Next: confirm Telegram,
+then inspect real callback/session/owner admin without logging session/CSRF values.
