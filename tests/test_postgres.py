@@ -145,3 +145,24 @@ def test_restore_on_postgres(pg_factory, tmp_path):
         module.test_owned_atomic_roundtrip_and_no_implicit_write(state)
     finally:
         setup.close()
+
+
+def test_postgres_outbox_to_postgres_core_exactly_once(pg_factory, monkeypatch, tmp_path):
+    import importlib.util
+    import sys
+    root = os.getenv("STUDENT_AI_BOT_ROOT")
+    if not root:
+        pytest.skip("Bot checkout required for PostgreSQL cross-project test")
+    module = importlib.import_module("test_bot_integration")
+    setup = module.integration.__wrapped__(tmp_path, monkeypatch)
+    state = list(next(setup))
+    try:
+        spec = importlib.util.spec_from_file_location("app.postgres_outbox", Path(root) / "app/postgres_outbox.py")
+        outbox_module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, "app.postgres_outbox", outbox_module)
+        spec.loader.exec_module(outbox_module)
+        boundary = pg_factory(tmp_path / "outbox-only")
+        state[3] = outbox_module.PostgresPaymentOutbox(boundary._url, schema=boundary.schema)
+        module.test_payment_commit_lost_response_restart_concurrent_retry(tuple(state))
+    finally:
+        setup.close()

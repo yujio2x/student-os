@@ -6,6 +6,7 @@ import importlib.util
 import io
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -36,6 +37,7 @@ def integration(tmp_path, monkeypatch):
     with TestClient(app) as web:
         class Opener:
             offline = False
+            lose_response = False
 
             def open(self, request, timeout):
                 if self.offline:
@@ -44,6 +46,8 @@ def integration(tmp_path, monkeypatch):
                                     headers=dict(request.header_items()))
                 if response.status_code >= 400:
                     raise HTTPError(request.full_url, response.status_code, "test", {}, None)
+                if self.lose_response:
+                    raise ConnectionResetError("synthetic lost response after commit")
                 return io.BytesIO(response.content)
 
         bot = transport.StudentOSBridgeClient("https://core.example", SECRET)
@@ -155,3 +159,28 @@ def test_bot_feedback_reaches_unified_admin_once(integration):
     overview = app.state.database.admin_overview()
     assert overview["feedback_positive"] == 1
     assert bot.health()["status"] == "ready"
+
+
+def test_payment_commit_lost_response_restart_concurrent_retry(integration):
+    app, _, bot, outbox, _, _ = integration
+    identity = telegram()
+    payload = {"telegram": identity, "charge_id": "synthetic-lost-commit",
+               "product_id": "task_help_1_v1", "stars_paid": 25}
+    outbox.enqueue(payload)
+    bot._opener.lose_response = True
+    assert outbox.retry(bot) == 0
+    assert outbox.get(payload["charge_id"])["delivery_state"] == "pending"
+    bot._opener.lose_response = False
+    assert bot.get_entitlement(identity)["entitlement"]["balance"] == 1
+    if hasattr(outbox, "schema"):
+        reopened = type(outbox)(outbox._url, schema=outbox.schema)
+    else:
+        reopened = type(outbox)(outbox.path)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: reopened.retry(bot), range(2)))
+    assert reopened.pending() == []
+    bot.record_payment(payload)
+    assert bot.get_entitlement(identity)["entitlement"]["balance"] == 1
+    with app.state.database.connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM telegram_star_payments WHERE telegram_payment_charge_id=?",
+                          (payload["charge_id"],)).fetchone()[0] == 1

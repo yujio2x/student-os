@@ -1008,3 +1008,17 @@ Exact next step after usage reset: implement/test durable PostgreSQL payment out
 in C:\student-ai-bot, preserve its existing owner edits/assets, attach the SAME
 database (no second add-on), and prove outage/restart/idempotent delivery with worker=0.
 Only after that continue the remaining gates in STAGING_RUNBOOK.md.
+
+## 2026-09-04 — Durable outbox coordinated checkpoint
+
+Bot 6c6d425 adds PostgreSQL-only bot_outbox persistence, preserving local SQLite and
+legacy bridge-OFF. It does not directly mutate Core business state. Core CI now pins
+that revision and checks real PostgreSQL outbox -> signed transport -> PostgreSQL Core.
+Synthetic response loss AFTER Core commit leaves pending outbox; restart/concurrent
+retries and a duplicate payment still yield exactly one payment row and one credit.
+Full Core suite 103 passed; new real-Heroku cross-project regression 1 passed (existing
+27 PostgreSQL tests unchanged, independently rerun in CI). Bot suite 79 tests with
+3 expected PG skips; dedicated real-Heroku/SQLite outbox suite 6 passed, including
+abrupt child-process termination after durable enqueue. No real payment/AI/polling.
+Bot's pre-existing branding edits and untracked assets/outputs remain untouched.
+Next: Doppler configuration, same-DB attachment, deployment and remaining runbook gates.
