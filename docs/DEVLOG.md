@@ -1102,3 +1102,34 @@ checklist are the handoff; no further independent deployment action is safe now.
 Core clean after commit; bot retains only the owner's original branding/assets/outputs.
 Exact next action is owner login in CLOUD_READINESS_CHECKPOINT.md, then migrate only
 allowlisted credentials via existing syncs and preflight/deploy Core with worker=0.
+
+## 2026-09-04 — PRE-DEPLOY credentials checkpoint (bounded low-usage step)
+
+Owner completed Doppler login/setup and authorized only credential migration/preflight,
+explicitly NOT Core deploy, DNS change or live cutover. Read local .env sources only
+into memory with interpolation disabled. No secret values in stdout, files or Git.
+Migrated existing TELEGRAM_BOT_TOKEN to both existing stg configs; OPENAI_API_KEY and
+OPENAI_MODEL to Core only. Allowlisted owner/support and fail-closed runtime settings
+configured. Generated fresh 384-bit bridge secret in memory: Core BOT_BRIDGE_SECRET
+and Bot STUDENT_OS_BRIDGE_SECRET match; no old local bridge secret reused.
+
+Both existing Heroku syncs remain enabled and status=synced, confirmed via Doppler API:
+Core lastSyncedAt 2026-09-04T12:51:37.533Z; Bot 2026-09-04T12:51:38.398Z.
+Verified all migrated values equal destination Heroku values without printing values.
+DATABASE_URL absent from Doppler and unchanged byte-for-byte in both Heroku apps;
+all unrelated pre-existing Heroku config vars preserved. No sync recreation/import.
+
+Environment-only preflight on actual destination configs: Bot PASS; Core BLOCKED by
+missing TELEGRAM_CLIENT_ID, TELEGRAM_CLIENT_SECRET, TELEGRAM_REDIRECT_URI. These do not
+exist in authorized local sources; no invented credentials or placeholder success.
+Preflight regression tests 2 passed; cache-write warning only, no application failure.
+No worker/one-off runtime started. Formation verified zero; latch explicitly false.
+Core deploy NOT started. Bot retains previously built artifact, zero workers. DNS
+unchanged; no live Telegram cutover or paid resource. No production acceptance claimed.
+
+STOP. Exact next step after 5h reset: obtain/register missing Telegram OIDC credentials
+through the official authorized flow (owner action if required), save to existing Core
+stg config and rerun preflight. Only then continue Core deployment/readiness with bot
+worker=0. Earlier login blocker is resolved; OIDC configuration is the remaining gate.
+Core tracked tree clean after this docs-only checkpoint; bot's original owner edits
+and assets/outputs remain untouched. No further atomic unit started at low usage.
