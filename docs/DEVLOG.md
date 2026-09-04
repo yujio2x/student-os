@@ -1259,3 +1259,26 @@ both custom-domain and Heroku-origin HTTPS health 200, no redirect loop. Working
 clean after checkpoint; Bot source/runtime unchanged (worker=0). OIDC owner in-app
 confirmation still pending; do not call login/admin verified. Next: confirm Telegram,
 then inspect real callback/session/owner admin without logging session/CSRF values.
+## 2026-09-04 — Low-usage pre-cutover authentication gate
+
+Owner reported Telegram confirmation and authorized a conditional post-reset overnight
+run, maximum about four hours, cutover ONLY after every critical gate passes. Before
+reset keep cloud worker zero and legacy polling unchanged. No new paid/legal/access
+actions, real Stars payment, destructive user-data deletion or irreversible migration.
+
+Actual browser returned to login gate, not authenticated settings. Read-only production
+DB check: owner Telegram identity 8247777174 absent; two expired login attempts exist.
+Therefore previous real callback/login cannot be marked successful (consistent with
+five-minute state expiry). Owner config matches exactly; DEV_LOGIN_ENABLED=false and
+DEV_ADMIN_ENABLED=false. No bypass, identity fabrication or role promotion attempted.
+Started one fresh real Telegram authorization attempt and requested immediate owner
+in-app confirmation. Pending gates: callback, verified owner identity/admin, real
+logout/relogin and replay/state checks. Local OIDC/HTTPS regression: 6 passed.
+
+Usage read: 91% consumed, 9% remaining; reset at 2026-09-04 21:00:01 UTC (02:00 local).
+Do not start a risky unit before fresh budget is verified. No overnight continuation
+has been scheduled yet while a fresh owner authentication action remains unresolved.
+Exact next step: confirm the newest Telegram request within five minutes; inspect
+callback and verify the owner's persisted identity/role without logging credentials.
+If that request expires, start a new browser login with owner present; never extend or
+bypass state expiry just to pass the gate. Worker=0 and no cutover until all gates green.
