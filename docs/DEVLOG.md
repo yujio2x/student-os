@@ -961,3 +961,50 @@ No production credentials or actions. Changed files: restore service/routes/UI/t
 ingress, headers, SW, deployment and DEVLOG. Rollback: disable restore UI/routes; actual
 data rollback requires an explicit prior export, never silent DB-file replacement.
 Next: remaining small operational/documentation gaps and synchronized final checkpoint.
+
+## 2026-09-04 — Heroku PostgreSQL foundation, no live cutover
+
+Scope: one authorized Essential-0 and the Core PostgreSQL storage boundary only.
+Starting Core HEAD d92b671; bot f6e4552 remains unchanged by this checkpoint.
+After explicit owner approval of add-on terms/MSA, provisioned exactly one database:
+postgresql-animate-45477, Essential-0 ($5/month), Core DATABASE attachment, created.
+Shared Eco subscription + this database target $10/month; Student credits cover up
+to $13/month while eligible, not an unrestricted $312 wallet. No additional paid
+resources. Both cloud apps still have no deployed code/dynos; local bot not restarted.
+
+Implementation: PostgreSQL repository adapter preserves existing canonical users,
+sessions, owned data, ledger, payments, replay guards, admin audit, OIDC, photo and
+restore services. SQLite remains local/test storage. Environment-loaded staging/
+production requires DATABASE_URL; DYNO defaults to production; staging also disables
+development login/admin bootstrap. Heroku-managed URL is never stored in Doppler/Git.
+Versioned SQL migrations have transactional application, checksums and advisory lock.
+Connections are bounded to four per process and close after each unit of work; remote
+TLS required. Short repository transactions are serialized for beta correctness.
+AI calls run outside these transactions. This is not a high-throughput design.
+
+ATTACK: initial real-Heroku run found SUM(boolean) incompatibility and SQLite rowid
+in restore snapshots (3 failures, 17 passes). Replaced both with portable SQL and
+explicit aggregate aliases. Added real PostgreSQL domain regressions for concurrent
+trial/credit use, refunds/idempotency, user isolation, sessions/CSRF/admin policy,
+Stars validation/replay, OIDC, export/restore, photo and transactional migration failure.
+Tests create disposable test_* schemas only, never modify public tables. The managed
+database URL passes directly in memory to the test subprocess; no values are printed.
+
+Verification: full SQLite/cross-project suite 102 passed, 24 PostgreSQL cases skipped
+without the test URL; Python compile, PWA runtime and diff checks passed. Final real
+Heroku PostgreSQL rerun: **27 passed** in 737 seconds, including all initial failures.
+Known warning: Starlette TestClient/httpx deprecation, no runtime failure. Staged
+credential-pattern check passed with only the disposable localhost CI URL allowlisted.
+Heroku recheck confirmed Essential-0 $5/month and no dynos on either cloud app.
+No UI changes, so browser QA is not repeated. No paid AI/Stars calls made.
+
+Not completed: bot PostgreSQL outbox, managed attachment to bot, Doppler migration,
+Sentry/privacy filters, OIDC credentials, domain/ACM, app deployment and live cutover.
+Known limits: serialized Core transactions; crash-reserved credit recovery still
+operator-mediated; no cloud availability/latency/payment acceptance claimed.
+Rollback before deployment: keep the current live runtime, do not drop the database.
+After migration release, never edit applied SQL or automatically downgrade schema.
+Exact next step after usage reset: implement/test durable PostgreSQL payment outbox
+in C:\student-ai-bot, preserve its existing owner edits/assets, attach the SAME
+database (no second add-on), and prove outage/restart/idempotent delivery with worker=0.
+Only after that continue the remaining gates in STAGING_RUNBOOK.md.

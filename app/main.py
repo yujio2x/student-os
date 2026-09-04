@@ -241,7 +241,11 @@ class ImportConfirm(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or load_settings()
-    database = Database(config.database_path)
+    if config.database_url:
+        from app.postgres import PostgresDatabase
+        database = PostgresDatabase(config.database_url)
+    else:
+        database = Database(config.database_path)
     sessions = SessionService(database, config.session_ttl_hours)
     study = StudyService(config.openai_api_key, config.openai_model)
     schedule_import = ScheduleImportService(config.openai_api_key, config.openai_model)
@@ -268,7 +272,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         oidc.initialize()
         photo.initialize()
         restore.initialize()
-        if config.environment != "production" and config.dev_login_enabled:
+        if config.environment == "development" and config.dev_login_enabled:
             local_user = database.ensure_local_user()
             database.seed_demo(local_user["id"])
         cleanup_task = asyncio.create_task(cleanup_photos())
@@ -317,7 +321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def admin_session(session: dict = Depends(current_session)) -> dict:
         if session["role"] != "admin":
             raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
-        if config.environment == "production":
+        if config.environment in {"production", "staging"}:
             identity = database.telegram_identity(session["user_id"])
             owner_id = identity["provider_user_id"] if identity else ""
             if not config.owner_telegram_id or not secrets.compare_digest(
@@ -411,7 +415,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/auth/dev-login")
     def development_login(request: Request, response: Response) -> dict:
-        if config.environment == "production" or not config.dev_login_enabled:
+        if config.environment != "development" or not config.dev_login_enabled:
             raise HTTPException(status_code=404, detail="Not found")
         user = database.ensure_local_user()
         database.set_user_role(
@@ -451,7 +455,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/auth/options")
     def auth_options() -> dict:
         return {"telegram_login": oidc.configured,
-                "development_login": config.environment != "production" and config.dev_login_enabled}
+                "development_login": config.environment == "development" and config.dev_login_enabled}
 
     @app.post("/api/auth/telegram/start")
     def start_telegram_login(request: Request, response: Response) -> dict:

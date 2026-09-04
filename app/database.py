@@ -531,7 +531,7 @@ class Database:
             ).fetchone()
             photo_counts = (0, 0, 0)
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_requests'").fetchone():
-                photo_counts = db.execute("SELECT COUNT(*), SUM(status='completed'), SUM(status='failed') FROM photo_requests").fetchone()
+                photo_counts = db.execute("SELECT COUNT(*) requests, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) successful, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM photo_requests").fetchone()
         return {
             "total_users": int(users["total"] or 0),
             "recent_users_7d": int(users["recent"] or 0),
@@ -606,7 +606,7 @@ class Database:
             ).fetchone()
             exact["ai_totals"] = dict(totals)
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_requests'").fetchone():
-                photo_totals = db.execute("""SELECT COUNT(*) requests, SUM(status='completed') successful,
+                photo_totals = db.execute("""SELECT COUNT(*) requests, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) successful,
                     SUM(input_tokens) input_tokens, SUM(output_tokens) output_tokens
                     FROM photo_requests WHERE user_id=?""", (user_id,)).fetchone()
                 for key in exact["ai_totals"]:

@@ -47,6 +47,9 @@ class PhotoService:
         self.database, self.entitlements, self.engine = database, entitlements, engine
 
     def initialize(self):
+        if getattr(self.database, "is_postgres", False):
+            self.cleanup()
+            return
         with self.database.connection() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS photo_quotes (

@@ -23,6 +23,8 @@ class RestoreService:
         self.models = lesson_model, deadline_model, preferences_model
 
     def initialize(self):
+        if getattr(self.database, "is_postgres", False):
+            return
         with self.database.connection() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS restore_previews (
                 id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_hash TEXT NOT NULL,
@@ -83,7 +85,8 @@ class RestoreService:
     def snapshot(self, db, user_id):
         content = {}
         for table in ("lessons", "deadlines", "preferences"):
-            content[table] = [dict(row) for row in db.execute(f"SELECT * FROM {table} WHERE user_id=? ORDER BY rowid", (user_id,))]
+            order = "user_id" if table == "preferences" else "id"
+            content[table] = [dict(row) for row in db.execute(f"SELECT * FROM {table} WHERE user_id=? ORDER BY {order}", (user_id,))]
         encoded = json.dumps(content, sort_keys=True, ensure_ascii=False).encode()
         if len(encoded) > MAX_RESTORE_BYTES:
             raise RestoreError("Текущие данные превышают лимит безопасного восстановления")

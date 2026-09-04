@@ -11,7 +11,9 @@ Selected: Option A, two **personal Cedar** apps in Europe, shared Eco subscripti
 Dashboard showed $312 Platform Credits and $0 current usage before subscription.
 Owner approved Eco terms at action time. Subscription succeeded: $5/month,
 1000 hours remaining, 0 hours used. This is a recurring subscription, not a deployment.
-The database has NOT yet been provisioned. No cloud bot polling has started.
+After separate owner approval of the database order terms, Essential-0 was provisioned:
+`postgresql-animate-45477`, attached to `student-os-ernar-beta` as Heroku-managed DATABASE.
+Its confirmed price is $5/month and state is created. No cloud bot polling has started.
 
 Student credits cover **up to $13 each month**, not an unrestricted $312 wallet.
 Unused monthly allowance expires; the program lasts 24 months. Expected cash cost

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -27,19 +27,22 @@ class Settings:
     telegram_client_id: str = ""
     telegram_client_secret: str = ""
     telegram_redirect_uri: str = ""
+    database_url: str = field(default="", repr=False)
 
 
 def load_settings() -> Settings:
     load_dotenv()
-    environment = os.getenv("APP_ENV", "development").strip().lower()
+    environment = os.getenv("APP_ENV", "production" if os.getenv("DYNO") else "development").strip().lower()
+    if environment in {"production", "staging"} and not os.getenv("DATABASE_URL", "").strip():
+        raise RuntimeError("Cloud requires PostgreSQL DATABASE_URL; SQLite is local-only")
     return Settings(
         database_path=Path(os.getenv("DATABASE_PATH", "data/student_os.db")),
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna").strip(),
         environment=environment,
         session_ttl_hours=max(1, int(os.getenv("SESSION_TTL_HOURS", "168"))),
-        secure_cookies=environment == "production",
-        dev_login_enabled=os.getenv("DEV_LOGIN_ENABLED", "false").strip().lower() == "true",
+        secure_cookies=environment in {"production", "staging"},
+        dev_login_enabled=environment == "development" and os.getenv("DEV_LOGIN_ENABLED", "false").strip().lower() == "true",
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
         telegram_auth_max_age_seconds=max(
             60, int(os.getenv("TELEGRAM_AUTH_MAX_AGE_SECONDS", "300"))
@@ -58,4 +61,5 @@ def load_settings() -> Settings:
         telegram_client_id=os.getenv("TELEGRAM_CLIENT_ID", "").strip(),
         telegram_client_secret=os.getenv("TELEGRAM_CLIENT_SECRET", "").strip(),
         telegram_redirect_uri=os.getenv("TELEGRAM_REDIRECT_URI", "").strip(),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
     )

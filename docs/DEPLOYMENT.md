@@ -9,12 +9,14 @@
 public shell, не приватные API, admin, баланс или учебные данные. Offline shell не означает
 полную работу расписания/AI без сети. Старый worker `/static/` снимается выборочно.
 
-Student OS готов к staging-развёртыванию как один ASGI web process, но этот checkpoint ничего не публикует и не создаёт платные ресурсы.
+Student OS подготовлен как один ASGI web process. Созданы пустые Heroku apps и одна
+Essential-0 по отдельному разрешению владельца; код ещё не развёрнут. Фактический
+статус ресурсов и бюджет: [CLOUD_COSTS](CLOUD_COSTS.md).
 
 ## Обязательная production-конфигурация
 
 - `APP_ENV=production`, `DEV_LOGIN_ENABLED=false` и `DEV_ADMIN_ENABLED=false` — development-вход и bootstrap администратора закрыты, session cookie получает `Secure`. Даже ошибочно включённый `DEV_ADMIN_ENABLED` игнорируется вне development.
-- `DATABASE_PATH` должен указывать на постоянный подключённый volume. Эфемерная SQLite удалит пользователей и их данные при пересоздании инстанса.
+- `DATABASE_URL` задаётся Heroku-managed PostgreSQL attachment. Не копировать в Doppler и не затирать при sync. SQLite через `DATABASE_PATH` остаётся только для локальной разработки. Cloud config без PostgreSQL завершается ошибкой; Heroku `DYNO` без явного APP_ENV по умолчанию считается production.
 - HTTPS завершается на доверенном reverse proxy, который не логирует cookie, Telegram payload или тела пользовательских запросов.
 - `TELEGRAM_BOT_TOKEN`, разрешённый домен/redirect, `OWNER_TELEGRAM_ID` и `BOT_BRIDGE_SECRET` задаются только через secret storage платформы.
 - `OPENAI_API_KEY` необязателен для деморежима; production-ключ хранится только в secret storage.
@@ -27,7 +29,7 @@ Student OS готов к staging-развёртыванию как один ASGI
 
 ## Процесс и проверка
 
-`Procfile` запускает один ASGI web process через порт платформы. Перед переводом трафика нужно применить конфигурацию, запустить приложение на persistent volume и проверить `GET /api/health`: ожидается `{"status":"ok","stage":"BETA_FOUNDATION"}`.
+`Procfile` запускает один ASGI web process через порт платформы. Перед переводом трафика нужно применить конфигурацию, проверить PostgreSQL migrations и `GET /api/health`: ожидается `{"status":"ok","stage":"BETA_FOUNDATION"}`.
 
 Публичный rollout заблокирован до настройки Telegram production login/domain и проверки постоянного хранилища. Автоматический deploy и покупка ресурсов намеренно не добавлены.
 
@@ -40,7 +42,7 @@ Restore реализован: upload → validation → preview → explicit rep
 ## Staging и ручной cutover
 
 1. Backup legacy bot DB, Core DB и outbox; не подменять один другим.
-2. Совместимые версии Core/bot на HTTPS с persistent volumes; bridge OFF.
+2. Совместимые версии Core/bot на HTTPS с PostgreSQL и persistent outbox; cloud worker OFF.
 3. OIDC Allowed URLs/RS256 и secrets вне Git; проверить owner `8247777174` и обычного пользователя.
 4. Synthetic signed health/catalog/identity/AI/payment/outage smoke. GET /api/health — liveness; signed POST /api/internal/v1/health — ledger-ready, AI mode, pending reservations.
 5. Export/restore на disposable staging account, mobile UI, реальные OCR-примеры. Платные AI/Stars — только после отдельного разрешения.
@@ -49,5 +51,7 @@ Restore реализован: upload → validation → preview → explicit rep
 
 Зависшие reserved после аварии процесса не возвращаются автоматически: оператор сверяет
 запрос и выдаёт аудируемую компенсацию через admin; lease/recovery policy — следующий hardening.
-Proxy ограничивает request size/time, не логирует auth callback query/cookies. Один SQLite
-writer/process — текущая staging topology. Production deploy автоматически не выполнялся.
+Proxy ограничивает request size/time, не логирует auth callback query/cookies. PostgreSQL
+adapter ограничивает Core четырьмя одновременными соединениями на процесс и сериализует
+короткие repository transactions advisory-lock. Это beta-компромисс, не high-throughput
+архитектура. Соединение/lock не удерживаются во время AI calls. Production deploy не выполнен.

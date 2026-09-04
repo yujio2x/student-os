@@ -34,6 +34,8 @@ class TelegramOIDC:
                     and url.path == "/api/auth/telegram/callback")
 
     def initialize(self):
+        if getattr(self.database, "is_postgres", False):
+            return
         with self.database.connection() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS telegram_login_attempts (
                 state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL,

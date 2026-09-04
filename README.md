@@ -2,6 +2,11 @@
 
 Статус: **BETA FOUNDATION** — общий Core для Web и Telegram, OIDC-вход и shared photo flow реализованы; реальный production rollout ещё не выполнен.
 
+Хранилище: SQLite для локальной разработки, PostgreSQL по `DATABASE_URL` для облака.
+Облачный запуск без PostgreSQL запрещён; версионированные миграции применяются атомарно.
+Создана одна Heroku Essential-0, но приложения ещё не развёрнуты и бот не переключён.
+Порядок переноса и оставшиеся проверки: [staging runbook](docs/STAGING_RUNBOOK.md).
+
 Новые проверенные возможности: default-OFF Telegram adapter с durable Stars outbox,
 единые trial/credits/unlimited, OIDC Authorization Code + PKCE, фото quote → explicit
 confirm → выбор задач → общий разбор и защита. Фото использует общий trial либо 5
