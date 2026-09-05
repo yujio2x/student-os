@@ -1422,3 +1422,50 @@ verification or any cutover; do not overwrite Heroku-managed DATABASE_URL manual
 Exact next step: rotate the affected Core/Bot/OIDC credentials through their official
 providers and existing Doppler syncs, verify both apps remain in sync and Bot=0, then run
 one fresh owner OIDC flow to verify identity 8247777174, admin, logout/relogin and replay.
+
+## 2026-09-05 — Canonical auth UI and bounded logout transition
+
+The owner completed the manual credential-stabilization steps without exposing replacement
+values to browser automation, chat, Git or this log. The subsequent real Telegram flow in
+the owner's ordinary Chrome session persisted the unique verified identity 8247777174 with
+the production admin role. Server-side checks found production mode, matching owner config,
+DEV_LOGIN_ENABLED=false, DEV_ADMIN_ENABLED=false, an active owner session, guest-link
+evidence and one entitlement row; no duplicate credit/trial grant or unexpected OIDC error
+was observed. Telegram bot-token rotation remains intentionally deferred to the coordinated
+cutover because invalidating it now would stop the legacy live bot.
+
+Production logout then exposed a client transition defect. `/api/auth/logout` already
+returned 204, revoked the server session, expired the cookie and rejected the old session,
+but the browser kept the modal open and depended entirely on `location.replace` to rebuild
+guest state. Separately, the UI treated every session—including a guest session—as grounds
+to render Logout. Both symptoms came from split frontend flags instead of one canonical
+auth state.
+
+The client now derives all account actions from one state machine: guest, Telegram user,
+owner, loading or inconsistent/unknown. Guest renders Login only; Telegram user/owner renders
+Logout only; loading and inconsistent states render neither. Logout is single-flight and
+bounded: API failures and network/timeout failures restore the button and show an inline
+error; success closes the modal immediately, clears private client state, creates and
+bootstraps a fresh guest, then returns to Today without a normal reload. A controlled hard
+reload is retained only when fresh guest bootstrap itself fails. The service-worker shell
+was bumped so stale PWA assets cannot preserve old account controls.
+
+Regression coverage executes the real account script and covers guest/auth/owner rendering,
+mutual exclusion of Login and Logout, stale authenticated UI, successful guest transition,
+double submit, API 500, network error, a truly hanging request, and bootstrap fallback. An
+additional semantic `[hidden]` assertion prevents component `display` rules from exposing
+admin/account actions after canonical state marks them hidden. Full local suite: 121 passed,
+31 expected environment skips and one known Starlette/httpx deprecation warning. Python
+compile, JavaScript syntax, account runtime, PWA runtime, diff and tracked-secret-pattern
+checks passed. No OpenAI- or Telegram-shaped credential was found in tracked files; remaining
+matches are explicit example/test placeholders and PostgreSQL URL parsing fixtures.
+
+Commits ab1da43 and 890bfb3 were pushed to main. GitHub Actions runs 33975955519 and
+33976159370 completed successfully. Heroku releases v26 and v27 deployed the exact commits;
+the custom-domain health endpoint returns 200/ok. Isolated production guest QA shows
+`Гость · не синхронизировано`, Login visible, Logout hidden, admin action hidden and no
+horizontal overflow. Cloud Bot remains worker=0; no cutover, payment, DNS, paid-resource or
+secret action occurred. The legacy bot was not stopped; its scheduled task remains Ready.
+One owner-side production check remains: in the already authenticated ordinary Chrome
+session, confirm one logout completes without hanging and immediately shows usable guest
+state, then relogin and confirm Logout appears exactly once.
