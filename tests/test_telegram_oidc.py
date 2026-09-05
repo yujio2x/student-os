@@ -94,8 +94,11 @@ def test_real_rs256_signature_claims_and_forgery(tmp_path):
               "iat": now, "exp": now + 300, "name": "Әлия"}
     encode = lambda data: jwt.encode(data, key, algorithm="RS256")
     assert app.state.oidc.verify_token(encode(claims))["telegram_id"] == "777"
+    assert app.state.oidc.verify_token(encode({**claims, "id": "8247777174"}))["telegram_id"] == "8247777174"
     for changes in ({"aud": "attacker"}, {"iss": "https://evil.test"}, {"exp": now - 1},
-                    {"iat": now - 301}, {"id": -1}, {"id": True}):
+                    {"iat": now - 301}, {"id": -1}, {"id": True}, {"id": 7.0},
+                    {"id": " 777"}, {"id": "+777"}, {"id": "00777"},
+                    {"id": "9" * 20}):
         with pytest.raises(OIDCError):
             app.state.oidc.verify_token(encode({**claims, **changes}))
     with pytest.raises(OIDCError):

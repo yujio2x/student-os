@@ -138,17 +138,22 @@ class TelegramOIDC:
         except jwt.PyJWTError:
             report("oidc_verify_claims_failed")
             raise OIDCError("invalid") from None
-        try:
-            if type(claims["iat"]) not in {int, float} or abs(time.time() - claims["iat"]) > 300:
-                report("oidc_verify_lifetime_failed")
-                raise OIDCError("expired")
-            telegram_id = claims["id"]
-            if type(telegram_id) is not int or telegram_id <= 0:
-                report("oidc_verify_identity_failed")
-                raise OIDCError("invalid")
-            return {"telegram_id": str(telegram_id),
-                    "username": str(claims.get("preferred_username", ""))[:80],
-                    "display_name": str(claims.get("name", ""))[:160]}
-        except (ValueError, TypeError, KeyError):
+        if type(claims["iat"]) not in {int, float} or abs(time.time() - claims["iat"]) > 300:
+            report("oidc_verify_lifetime_failed")
+            raise OIDCError("expired")
+        raw_id = claims["id"]
+        if type(raw_id) is int:
+            telegram_id = raw_id
+        elif (type(raw_id) is str and 1 <= len(raw_id) <= 19
+              and raw_id.isascii() and raw_id.isdecimal()
+              and raw_id[0] != "0"):
+            telegram_id = int(raw_id)
+        else:
             report("oidc_verify_identity_failed")
-            raise OIDCError("invalid") from None
+            raise OIDCError("invalid")
+        if not 0 < telegram_id < 2 ** 63:
+            report("oidc_verify_identity_failed")
+            raise OIDCError("invalid")
+        return {"telegram_id": str(telegram_id),
+                "username": str(claims.get("preferred_username", ""))[:80],
+                "display_name": str(claims.get("name", ""))[:160]}
