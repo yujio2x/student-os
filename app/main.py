@@ -424,6 +424,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "csrf_token": issued.csrf_token, "expires_at": issued.expires_at, "mode": mode,
         }
 
+    @app.post("/api/auth/guest")
+    def guest_login(request: Request, response: Response) -> dict:
+        if request.headers.get("Sec-Fetch-Site", "") == "cross-site":
+            raise HTTPException(status_code=403, detail="Cross-site guest session rejected")
+        current = sessions.resolve(request.cookies.get(SESSION_COOKIE))
+        if current:
+            identity = database.telegram_identity(current["user_id"])
+            return {
+                "user": {"id": current["user_id"], "display_name": current["display_name"], "role": current["role"]},
+                "csrf_token": current["csrf_token"], "expires_at": current["expires_at"],
+                "mode": "telegram" if identity else "guest",
+            }
+        sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        return issue_browser_session(response, database.create_user("Гость"), "guest")
+
     @app.post("/api/auth/dev-login")
     def development_login(request: Request, response: Response) -> dict:
         if config.environment != "development" or not config.dev_login_enabled:
@@ -452,8 +467,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/auth/telegram/login")
     def telegram_login(payload: TelegramAuthPayload, request: Request, response: Response) -> dict:
         verified = verify_telegram_payload(payload)
-        user = database.telegram_login_user(
-            verified["telegram_id"], verified["username"], verified["display_name"]
+        current = sessions.resolve(request.cookies.get(SESSION_COOKIE))
+        user = (
+            database.merge_guest_with_telegram(
+                current["user_id"], verified["telegram_id"], verified["username"], verified["display_name"]
+            )
+            if current and database.telegram_identity(current["user_id"]) is None
+            else database.telegram_login_user(
+                verified["telegram_id"], verified["username"], verified["display_name"]
+            )
         )
         if config.owner_telegram_id and secrets.compare_digest(
             verified["telegram_id"], config.owner_telegram_id
@@ -506,9 +528,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 session = sessions.resolve(token)
                 if not session or session["user_id"] != attempt["target_user_id"]:
                     raise OIDCError("expired")
-                database.link_telegram_identity(session["user_id"], verified["telegram_id"],
-                                                verified["username"], verified["display_name"])
-            user = database.telegram_login_user(verified["telegram_id"], verified["username"], verified["display_name"])
+                user = database.merge_guest_with_telegram(
+                    session["user_id"], verified["telegram_id"],
+                    verified["username"], verified["display_name"],
+                )
+            else:
+                user = database.telegram_login_user(
+                    verified["telegram_id"], verified["username"], verified["display_name"]
+                )
             if config.owner_telegram_id and secrets.compare_digest(verified["telegram_id"], config.owner_telegram_id):
                 database.set_user_role(user["id"], "admin")
                 user["role"] = "admin"
@@ -546,9 +573,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/auth/session")
     def auth_session(session: dict = Depends(current_session)) -> dict:
+        identity = database.telegram_identity(session["user_id"])
         return {
             "user": {"id": session["user_id"], "display_name": session["display_name"], "role": session["role"]},
             "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
+            "mode": "telegram" if identity else "guest",
         }
 
     @app.post("/api/auth/logout", status_code=204)
@@ -585,6 +614,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "session": {
                 "user": {"id": user_id, "display_name": session["display_name"], "role": session["role"]},
                 "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
+                "mode": "telegram" if telegram_identity else "guest",
             },
             "telegram": {
                 "configured": bool(config.telegram_bot_token),

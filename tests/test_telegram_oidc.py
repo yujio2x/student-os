@@ -54,7 +54,7 @@ def test_pkce_cookie_binding_replay_owner_and_logout(tmp_path):
         assert client.get("/api/auth/session").status_code == 401
 
 
-def test_link_requires_csrf_and_conflict_does_not_split_account(tmp_path):
+def test_link_requires_csrf_and_existing_account_merges_guest(tmp_path):
     app = configured_app(tmp_path)
     with TestClient(app) as client:
         original = app.state.database.telegram_login_user("777", "student", "Student")
@@ -63,8 +63,8 @@ def test_link_requires_csrf_and_conflict_does_not_split_account(tmp_path):
         state = start(client, {"X-CSRF-Token": local["csrf_token"]})
         app.state.oidc.exchange = Mock(return_value={"telegram_id": "777", "username": "student", "display_name": "Student"})
         result = client.get(f"/api/auth/telegram/callback?state={state}&code=fixture", follow_redirects=False)
-        assert "conflict" in result.headers["location"]
-        assert client.get("/api/auth/session").json()["user"]["id"] == local["user"]["id"]
+        assert "connected" in result.headers["location"]
+        assert client.get("/api/auth/session").json()["user"]["id"] == original["id"]
         assert app.state.database.telegram_login_user("777", "student", "Student")["id"] == original["id"]
 
 
@@ -101,7 +101,8 @@ def test_real_rs256_signature_claims_and_forgery(tmp_path):
     app = configured_app(tmp_path)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     app.state.oidc.keys = Mock()
-    app.state.oidc.keys.get_signing_key_from_jwt.return_value = SimpleNamespace(key=key.public_key())
+    app.state.oidc.keys.get_signing_keys.return_value = [SimpleNamespace(
+        key=key.public_key(), key_type="RSA", algorithm_name="RS256")]
     now = int(time.time())
     claims = {"iss": ISSUER, "aud": "1234", "sub": "opaque-sub", "id": 777,
               "iat": now, "exp": now + 300, "name": "Әлия"}
@@ -128,10 +129,28 @@ def test_rotated_jwks_keys_and_bounded_clock_skew(tmp_path):
     now = int(time.time())
     base = {"iss": ISSUER, "aud": "1234", "sub": "opaque", "id": "8247777174",
             "iat": now + 20, "exp": now - 20}
-    assert app.state.oidc.verify_token(jwt.encode(base, old, algorithm="RS256"))["telegram_id"] == "8247777174"
+    assert app.state.oidc.verify_token(jwt.encode(base, old, algorithm="RS256",
+                                                   headers={"kid":"old"}))["telegram_id"] == "8247777174"
     assert app.state.oidc.verify_token(jwt.encode({**base, "iat": now, "exp": now + 60}, new,
-                                                  algorithm="RS256"))["telegram_id"] == "8247777174"
+                                                  algorithm="RS256", headers={"kid":"new"}))["telegram_id"] == "8247777174"
     assert app.state.oidc.keys.get_signing_key_from_jwt.call_count == 2
+
+
+def test_missing_kid_requires_one_unique_rs256_key(tmp_path):
+    app = configured_app(tmp_path)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = int(time.time())
+    claims = {"iss": ISSUER, "aud": "1234", "sub": "opaque", "id": "8247777174",
+              "iat": now, "exp": now + 300}
+    token = jwt.encode(claims, key, algorithm="RS256")
+    compatible = SimpleNamespace(key=key.public_key(), key_type="RSA", algorithm_name="RS256")
+    app.state.oidc.keys = Mock()
+    app.state.oidc.keys.get_signing_keys.return_value = [compatible]
+    assert app.state.oidc.verify_token(token)["telegram_id"] == "8247777174"
+    app.state.oidc.keys.get_signing_keys.return_value = [compatible, compatible]
+    with patch("app.telegram_oidc.report") as report, pytest.raises(OIDCError):
+        app.state.oidc.verify_token(token)
+    report.assert_called_once_with("oidc_verify_key_failed")
 
 
 def test_exchange_reports_only_allowlisted_failure_stage(tmp_path):
@@ -201,5 +220,5 @@ def test_verify_reports_only_specific_safe_failure_categories(tmp_path):
               "iat": now, "exp": now + 300}
     with patch("app.telegram_oidc.report") as report:
         with pytest.raises(OIDCError):
-            oidc.verify_token(jwt.encode(claims, key, algorithm="RS256"))
+            oidc.verify_token(jwt.encode(claims, key, algorithm="RS256", headers={"kid":"fixture"}))
         report.assert_called_once_with("oidc_verify_audience_failed")

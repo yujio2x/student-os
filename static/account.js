@@ -1,7 +1,7 @@
 // Account actions are also bound before bootstrap, so production login needs no dev session.
 async function beginTelegramLogin(button){
   button.disabled=true;const original=button.textContent;button.textContent="Открываю Telegram…";
-  try{const result=await api("/api/auth/telegram/start",{method:"POST"});location.assign(result.url);}
+  try{sessionStorage.setItem("student-os-auth-return",location.hash||"#today");const result=await api("/api/auth/telegram/start",{method:"POST"});location.assign(result.url);}
   catch(error){toast(error.message);document.querySelector("#loginError").textContent=error.message;}
   finally{button.disabled=false;button.textContent=original;}
 }
@@ -15,7 +15,7 @@ function renderAccountActions(){
   if(typeof renderPhotoAccess==="function")renderPhotoAccess();
   const linked=Boolean(state.telegram?.identity),entitlement=state.student_ai_entitlement;
   const connect=document.querySelector("#connectTelegram"),buy=document.querySelector("#accountBuy");
-  connect.hidden=linked;connect.disabled=!state.telegram?.login_available;
+  connect.hidden=linked;connect.disabled=!state.telegram?.login_available;connect.textContent="Войти через Telegram";
   document.querySelector("#accountRefresh").hidden=!linked;
   document.querySelector("#accountLogout").hidden=!state.session;
   buy.hidden=!(linked&&entitlement?.purchase_url);
@@ -28,13 +28,15 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.querySelector("#cancelLogout").addEventListener("click",()=>document.querySelector("#logoutDialog").close());
   document.querySelector("#confirmLogout").addEventListener("click",async event=>{
     event.currentTarget.disabled=true;
-    try{await api("/api/auth/logout",{method:"POST"});location.replace("/?logged_out=1");}
+    try{await api("/api/auth/logout",{method:"POST"});location.replace("/#today");}
     catch(error){toast(error.message);event.currentTarget.disabled=false;}
   });
   const params=new URLSearchParams(location.search),result=params.get("telegram");
   if(result){
     const messages={connected:"Telegram подключён",conflict:"Этот Telegram уже связан с другим аккаунтом. Выйдите и войдите через Telegram; текущие данные сохранятся в прежнем аккаунте.",expired:"Время входа истекло. Нажмите «Подключить Telegram» ещё раз.",cancelled:"Вход отменён. Можно повторить позже.",failed:"Не удалось подтвердить вход. Повторите попытку."};
     document.querySelector("#accountNotice").textContent=messages[result]||"";
-    history.replaceState(null,"",location.pathname+location.hash);
+    const returnTo=result==="connected"?sessionStorage.getItem("student-os-auth-return"):"";
+    sessionStorage.removeItem("student-os-auth-return");
+    history.replaceState(null,"",location.pathname+(returnTo||location.hash));
   }
 });

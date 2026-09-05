@@ -114,7 +114,25 @@ class TelegramOIDC:
             report("oidc_verify_claims_failed")
             raise OIDCError("invalid")
         try:
-            key = self.keys.get_signing_key_from_jwt(token).key
+            header = jwt.get_unverified_header(token)
+            if header.get("alg") != "RS256":
+                report("oidc_verify_algorithm_failed")
+                raise OIDCError("invalid")
+            kid = header.get("kid")
+            if kid is None:
+                # Telegram's default RS256 token may omit kid. Accept it only when
+                # the current official JWKS has exactly one compatible key.
+                candidates = [item for item in self.keys.get_signing_keys()
+                              if item.key_type == "RSA" and item.algorithm_name == "RS256"]
+                if len(candidates) != 1:
+                    raise jwt.PyJWKClientError("Ambiguous signing key")
+                key = candidates[0].key
+            elif isinstance(kid, str) and 1 <= len(kid) <= 128:
+                key = self.keys.get_signing_key_from_jwt(token).key
+            else:
+                raise jwt.PyJWKClientError("Invalid key identifier")
+        except OIDCError:
+            raise
         except (jwt.PyJWKClientError, jwt.DecodeError, ValueError, TypeError, KeyError):
             report("oidc_verify_key_failed")
             raise OIDCError("invalid") from None

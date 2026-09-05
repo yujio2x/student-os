@@ -415,6 +415,85 @@ class Database:
             row = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
         return dict(row)
 
+    def merge_guest_with_telegram(
+        self, guest_user_id: str, telegram_id: str, username: str, display_name: str
+    ) -> dict:
+        """Atomically attach a new identity or merge guest-owned core data.
+
+        Lessons have independent IDs and are moved as-is. Exact duplicate deadlines
+        keep the authenticated account's copy. Singleton preferences and all
+        entitlement/payment state stay with the authenticated account, so a guest
+        can never duplicate trials or credits during linking.
+        """
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            guest = db.execute("SELECT * FROM users WHERE id=?", (guest_user_id,)).fetchone()
+            if guest is None:
+                raise ExternalIdentityConflict("Гостевая сессия больше не существует")
+            guest_identity = db.execute(
+                "SELECT provider_user_id FROM external_identities WHERE provider='telegram' AND user_id=?",
+                (guest_user_id,),
+            ).fetchone()
+            if guest_identity and guest_identity["provider_user_id"] != telegram_id:
+                raise ExternalIdentityConflict("У пользователя уже связан другой Telegram-аккаунт")
+
+            existing = db.execute(
+                """SELECT u.* FROM external_identities e JOIN users u ON u.id=e.user_id
+                WHERE e.provider='telegram' AND e.provider_user_id=?""",
+                (telegram_id,),
+            ).fetchone()
+            now = self._now()
+            if existing is None:
+                db.execute(
+                    """INSERT INTO external_identities
+                    (provider, provider_user_id, user_id, username, display_name, linked_at)
+                    VALUES ('telegram', ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, provider_user_id) DO UPDATE SET
+                    username=excluded.username, display_name=excluded.display_name""",
+                    (telegram_id, guest_user_id, username, display_name, now),
+                )
+                db.execute(
+                    "UPDATE users SET display_name=?, last_seen_at=? WHERE id=?",
+                    (display_name, now, guest_user_id),
+                )
+                row = db.execute("SELECT * FROM users WHERE id=?", (guest_user_id,)).fetchone()
+                return dict(row)
+
+            target_user_id = str(existing["id"])
+            db.execute(
+                """UPDATE external_identities SET username=?, display_name=?
+                WHERE provider='telegram' AND provider_user_id=?""",
+                (username, display_name, telegram_id),
+            )
+            if target_user_id != guest_user_id:
+                guest_deadlines = db.execute(
+                    "SELECT id, title, due_at, source FROM deadlines WHERE user_id=?",
+                    (guest_user_id,),
+                ).fetchall()
+                for deadline in guest_deadlines:
+                    duplicate = db.execute(
+                        """SELECT 1 FROM deadlines
+                        WHERE user_id=? AND title=? AND due_at=? AND source=?""",
+                        (target_user_id, deadline["title"], deadline["due_at"], deadline["source"]),
+                    ).fetchone()
+                    if duplicate:
+                        db.execute(
+                            "DELETE FROM deadlines WHERE id=? AND user_id=?",
+                            (deadline["id"], guest_user_id),
+                        )
+                db.execute("UPDATE lessons SET user_id=? WHERE user_id=?", (target_user_id, guest_user_id))
+                db.execute("UPDATE deadlines SET user_id=? WHERE user_id=?", (target_user_id, guest_user_id))
+                db.execute(
+                    "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                    (now, guest_user_id),
+                )
+            db.execute(
+                "UPDATE users SET display_name=?, last_seen_at=? WHERE id=?",
+                (display_name, now, target_user_id),
+            )
+            row = db.execute("SELECT * FROM users WHERE id=?", (target_user_id,)).fetchone()
+        return dict(row)
+
     def link_telegram_identity(
         self, user_id: str, telegram_id: str, username: str, display_name: str
     ) -> dict:
