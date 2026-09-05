@@ -1365,3 +1365,60 @@ database, paid-resource or secret changes were made. Exact next step with the ow
 present: start one fresh Telegram login and confirm it within five minutes, then inspect
 Sentry for exactly one allowlisted stage category and fix only the proven stage before
 rerunning identity/admin/session/replay gates.
+
+## 2026-09-05 — Guest-first production architecture and OIDC key regression
+
+The owner's successful Telegram consent returned to the blocking login dialog because
+Core did not create a session. Privacy-safe Sentry evidence isolated the failure after
+authorization-code exchange and specifically at signing-key selection. Telegram's live
+default RS256 ID token omitted `kid`; PyJWT's default `get_signing_key_from_jwt` cannot
+choose a key without it. Verification now decodes only the protected header first,
+still requires RS256, and when `kid` is absent accepts the official JWKS only if exactly
+one RSA/RS256 key is compatible. Missing, malformed or ambiguous key selection still
+fails closed. Issuer, audience, expiry, issued-at skew, PKCE, state, nonce, redirect URI,
+signature verification and replay semantics were not weakened.
+
+Implemented the corrected product model: a fresh production browser receives a random
+opaque HttpOnly/SameSite session bound to a server-generated canonical UUID and enters
+Student OS as a guest. Today, Schedule, Calendar, deadlines, Settings, import/export and
+normal owned-data editing keep the existing user_id authorization boundary. Student AI,
+entitlements and admin remain denied without a verified Telegram identity. Startup no
+longer invokes the blocking login dialog. Settings presents a non-blocking guest/sync
+card; the Student AI gate starts contextual Telegram login and stores the originating
+hash for a successful return.
+
+Guest linking reuses the hardened OIDC attempt's bound session/target user. A new
+Telegram identity attaches to that UUID. When the Telegram identity already belongs to
+an account, the transaction moves independent-ID lessons and nonduplicate deadlines;
+exact duplicate deadlines keep the account copy. Existing account preferences win.
+Guest preferences, entitlements, trials, reservations and payments are never moved or
+combined, preventing credit/trial duplication. Guest sessions are revoked during merge,
+and callback completion rotates the browser session. Logout revokes the authenticated
+session; the next startup creates a fresh isolated guest, so authenticated rows are not
+exposed. Client-supplied internal IDs remain ignored.
+
+Attack/regression coverage includes guest creation and fixation resistance, cross-site
+creation rejection, browser isolation, reload persistence, guest lesson/deadline writes,
+AI/admin denial, new identity linking, existing-account merge, conservative settings,
+entitlement non-transfer, exact-deadline deduplication, callback replay, owner-only admin,
+logout isolation and stale-cookie rejection. Full suite: 121 passed / 31 expected
+environment skips; Python compile, Node checks and diff/secret-pattern checks passed.
+GitHub CI runs 33958118546 and 33958398685 completed successfully. Commits 7cb1407 and
+bbe29a7 were pushed. Core releases v17 and v18 deployed those exact commits; HTTPS health
+is 200. Production API smoke created an isolated guest and returned bootstrap mode=guest.
+
+Browser QA initially reproduced the old modal because the installed browser profile held
+the prior versioned PWA script. Shell cache and account/app script versions were bumped;
+fresh v18 browser QA then loaded Settings without a modal and showed the guest badge,
+sync explanation and Telegram CTA. The service worker still excludes `/api/` and
+`/admin` from handling. No schema migration was required.
+
+Operational safety: Bot cloud formation remained zero and the legacy bot was not stopped
+or changed. No DNS, paid resource, payment or cutover action occurred. During post-deploy
+release inspection, the legacy Heroku CLI unexpectedly included config-var values in its
+captured terminal output. Values are intentionally not repeated here. Treat the affected
+runtime credentials as potentially exposed and rotate them before the next real OIDC
+verification or any cutover; do not overwrite Heroku-managed DATABASE_URL manually.
+Exact next step: rotate the affected Core/Bot/OIDC credentials through their official
+providers and existing Doppler syncs, verify both apps remain in sync and Bot=0, then run
+one fresh owner OIDC flow to verify identity 8247777174, admin, logout/relogin and replay.
