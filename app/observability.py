@@ -3,7 +3,11 @@ import os
 import re
 
 CATEGORIES = {"synthetic_check", "core_unhandled", "outbox_retry_failed",
-              "oidc_exchange_failed", "oidc_verify_failed"}
+              "oidc_exchange_failed", "oidc_verify_key_failed",
+              "oidc_verify_signature_failed", "oidc_verify_algorithm_failed",
+              "oidc_verify_audience_failed", "oidc_verify_issuer_failed",
+              "oidc_verify_lifetime_failed", "oidc_verify_claims_failed",
+              "oidc_verify_identity_failed"}
 ENVIRONMENTS = {"production", "staging", "development", "test"}
 _client = None
 

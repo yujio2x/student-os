@@ -124,4 +124,26 @@ def test_exchange_reports_only_allowlisted_failure_stage(tmp_path):
          patch("app.telegram_oidc.report") as report:
         with pytest.raises(OIDCError):
             oidc.exchange("private-code", "private-verifier")
-        report.assert_called_once_with("oidc_verify_failed")
+        report.assert_not_called()
+
+
+def test_verify_reports_only_specific_safe_failure_categories(tmp_path):
+    app = configured_app(tmp_path)
+    oidc = app.state.oidc
+    with patch.object(oidc.keys, "get_signing_key_from_jwt",
+                      side_effect=jwt.PyJWKClientError("private jwks")), \
+         patch("app.telegram_oidc.report") as report:
+        with pytest.raises(OIDCError):
+            oidc.verify_token("private-token")
+        report.assert_called_once_with("oidc_verify_key_failed")
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    oidc.keys = Mock()
+    oidc.keys.get_signing_key_from_jwt.return_value = SimpleNamespace(key=key.public_key())
+    now = int(time.time())
+    claims = {"iss": ISSUER, "aud": "wrong", "sub": "opaque", "id": 777,
+              "iat": now, "exp": now + 300}
+    with patch("app.telegram_oidc.report") as report:
+        with pytest.raises(OIDCError):
+            oidc.verify_token(jwt.encode(claims, key, algorithm="RS256"))
+        report.assert_called_once_with("oidc_verify_audience_failed")

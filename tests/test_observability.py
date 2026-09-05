@@ -56,6 +56,10 @@ class SafeEventsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '^Invalid observability environment$'):
                 monitoring.initialize("core")
         self.assertEqual(
-            {"oidc_exchange_failed", "oidc_verify_failed"} - monitoring.CATEGORIES,
+            {"oidc_exchange_failed", "oidc_verify_key_failed",
+             "oidc_verify_signature_failed", "oidc_verify_algorithm_failed",
+             "oidc_verify_audience_failed", "oidc_verify_issuer_failed",
+             "oidc_verify_lifetime_failed", "oidc_verify_claims_failed",
+             "oidc_verify_identity_failed"} - monitoring.CATEGORIES,
             set(),
         )
