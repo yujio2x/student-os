@@ -1469,3 +1469,48 @@ secret action occurred. The legacy bot was not stopped; its scheduled task remai
 One owner-side production check remains: in the already authenticated ordinary Chrome
 session, confirm one logout completes without hanging and immediately shows usable guest
 state, then relogin and confirm Logout appears exactly once.
+
+## 2026-09-05 — Verified-owner UI and device theme continuity
+
+Completed the bounded auth/UX hardening unit without changing OIDC, payment or bot-cutover
+architecture. Admin visibility now consumes an explicit `is_owner` capability calculated
+by the server. In production/staging it is true only when the current server session has
+the admin role and its persisted Telegram identity exactly matches OWNER_TELEGRAM_ID.
+The same predicate protects `/admin` and every admin API, so frontend visibility remains
+UX-only and cannot grant access. Guest, ordinary Telegram user, missing identity, stale
+admin role and a client-side forged Telegram owner ID all fail closed. Logout clears the
+canonical owner state and hides Admin immediately.
+
+Theme root cause was the post-logout guest bootstrap: it returned the new guest account's
+default light preference and `applyTheme` overwrote the current device presentation. Theme
+now has an explicit device/browser owner in localStorage with precedence over account or
+guest defaults on that device. Account preference still supplies the theme on a fresh
+browser and light/dark choices continue to update the existing server preference; System
+is a device-local presentation mode. Private session, Telegram identity, entitlement,
+credits and account data are not stored with the theme and are still cleared on logout.
+
+A small blocking theme initializer runs before the stylesheet, applying validated
+light/dark/system state before first paint. System mode follows `prefers-color-scheme`.
+The PWA shell includes the initializer and was advanced to v11, preventing an installed
+stale shell from restoring the old transition. Runtime regression covers owner/ordinary/
+guest Admin visibility, stale role, forged client ID, logout/relogin rendering, stale PWA
+state, private-state clearing without theme loss, light/dark/system logout resolution,
+reload/PWA reopen, fresh-browser isolation and invalid local state. Existing backend tests
+cover guest and normal-user 403, verified configured owner access and production DEV-admin
+impossibility.
+
+Validation: 31 focused backend tests passed; full suite 121 passed / 31 expected
+environment skips with the one known Starlette/httpx deprecation warning. Theme, account
+and PWA Node runtimes, JavaScript syntax, Python compile, diff and tracked-secret-pattern
+checks passed. Commit 60da93c was pushed; GitHub Actions run 33977270082 completed
+successfully. Heroku release v28 deployed that exact code commit.
+
+Production read-only checks: Core health is 200/ok; APP_ENV=production,
+DEV_LOGIN_ENABLED=false and DEV_ADMIN_ENABLED=false. A fresh unauthenticated `/admin`
+request returns 403. Isolated guest browser QA shows `Гость · не синхронизировано`, Login
+visible, Logout/Admin hidden and no horizontal overflow. Switching to dark yields the dark
+background immediately; reload observes dark at DOMContentLoaded before bootstrap and the
+settled guest remains dark. Cloud Bot has no dynos (worker=0). The legacy local bot process
+and its Ready scheduled task were not changed. Mobile viewport QA and owner-authenticated
+Admin → logout → guest → relogin UI remain manual checks; Codex's isolated guest browser is
+not an authoritative Telegram OIDC environment.
