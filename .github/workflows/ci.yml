@@ -55,6 +55,7 @@ jobs:
       - run: node tests/pwa_runtime.cjs
       - run: node tests/account_runtime.cjs
       - run: node tests/theme_runtime.cjs
+      - run: node tests/student_ai_ux_runtime.cjs
       - uses: actions/checkout@v4
         with:
           repository: yujio2x/student-ai-bot

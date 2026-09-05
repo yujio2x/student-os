@@ -1,5 +1,5 @@
-const CACHE_NAME="student-os-shell-v11";
-const PUBLIC_SHELL=["/","/static/styles.css","/static/theme.js","/static/app.js","/static/account.js","/static/photo.js","/static/restore.js","/static/pwa.js","/static/manifest.webmanifest","/static/icon.svg","/static/icon-192.png","/static/icon-512.png"];
+const CACHE_NAME="student-os-shell-v12";
+const PUBLIC_SHELL=["/","/static/styles.css","/static/theme.js","/static/student-ai-ux.js","/static/app.js","/static/account.js","/static/photo.js","/static/restore.js","/static/pwa.js","/static/manifest.webmanifest","/static/icon.svg","/static/icon-192.png","/static/icon-512.png"];
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(PUBLIC_SHELL)));

@@ -394,14 +394,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not entitlement["connected"]:
             raise HTTPException(
                 status_code=409,
-                detail="Student AI готов к подключению, но unified ledger пока недоступен",
+                detail="Student AI временно недоступен. Попробуйте позже.",
             )
         try:
             reservation = app.state.entitlements.reserve_credit(user_id, payload.request_id)
             if reservation.get("reused"):
                 raise ReservationConflict("Этот запрос Student AI уже обрабатывался")
         except InsufficientCredits as exc:
-            raise HTTPException(status_code=402, detail="Недостаточно credits Student AI") from exc
+            raise HTTPException(status_code=402, detail="Закончились попытки Student AI") from exc
         except ReservationConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         try:
@@ -422,7 +422,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pass
             raise HTTPException(
                 status_code=502,
-                detail="AI analysis failed safely; entitlement was restored",
+                detail="Не удалось завершить разбор. Попытка не списана — можно повторить.",
             ) from exc
 
     def issue_browser_session(response: Response, user: dict, mode: str) -> dict:
@@ -780,7 +780,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             return operation(*args)
         except InsufficientCredits:
-            raise HTTPException(status_code=402, detail="Для фото нужно 5 credits. Купить попытки можно в Telegram") from None
+            raise HTTPException(status_code=402, detail="Для работы с фото нужно 5 попыток. Купить их можно в Telegram") from None
         except ReservationConflict:
             raise HTTPException(status_code=409, detail="Доступ изменился. Получите новую цену и подтвердите снова") from None
         except PhotoError as exc:
