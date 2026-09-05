@@ -1227,6 +1227,34 @@ applied_at. Catalog, entitlement and duplicate-payment delivery work after resta
 This is an actual process-cold/restart test, NOT proof of a 30-minute Eco sleep wake.
 Custom-domain OIDC/browser/admin proof remains blocked by owner's explicit DNS hold.
 No local bot restart and no cloud polling were performed; owner edits stay untouched.
+
+## 2026-09-05 — Offline production hardening and pre-cutover checkpoint
+
+Real Telegram OIDC remains RED/BLOCKED_BY_OWNER: remote confirmation did not arrive,
+no further login was attempted, and production owner/admin is not claimed green.
+Offline hardening now uses the configured login TTL consistently for state, cookie,
+and ID-token freshness; applies 30-second bounded JWT clock skew; preserves exact
+issuer/audience/redirect/PKCE validation; and exercises rotated synthetic JWKS keys.
+Production responses now set HSTS, CSP, frame, opener, resource, referrer and MIME
+boundaries while API/admin responses remain no-store. Operations and rollback guidance
+was added without changing topology or cost.
+
+Full Core regression after the final UI fix: 115 passed / 31 expected PostgreSQL
+skips; compile and diff checks passed. Security scan found only the intentional
+`.env.example`; the credential-pattern hit is the CI scanner matching its own pattern,
+not a credential. Commits 0da2153 and d632c36 were pushed. GitHub CI runs 33939997081
+and 33940001930 completed successfully for Core and Bot respectively. Core commit
+d632c36 is Heroku release v16 with one Eco web dyno.
+
+Production no-secret config preflight passed and public health, root, manifest,
+service worker and 192/512 icons return 200. HTTP redirects to HTTPS with 307; HSTS,
+CSP, X-Frame-Options, COOP and CORP are present. The service worker allowlist excludes
+`/api/` and `/admin`. Chrome mobile emulation at 390x844 reports inner/document/body
+width 390 with no right-edge offenders after the shrinkable-grid fix; Edge desktop
+and the public Telegram login dialog rendered normally. No Telegram login button was
+clicked. One privacy-safe Core Sentry synthetic event was queued; scrubber regression
+tests remain green. Exact next owner step: at the laptop, perform one fresh Telegram
+login, then verify identity 8247777174, admin, logout/relogin and replay/state rejection.
 ## 2026-09-04 — Owner-authorized DNS / ACM / OIDC entry
 
 Owner explicitly authorized apex DNS to the current Heroku target, keeping Bot=0,
