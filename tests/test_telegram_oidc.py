@@ -84,6 +84,19 @@ def test_expired_cancelled_and_unconfigured(tmp_path):
         assert client.post("/api/auth/telegram/start").status_code == 503
 
 
+def test_configured_ttl_controls_state_and_cookie(tmp_path):
+    app = create_app(Settings(tmp_path / "ttl.db", "", "demo",
+        telegram_client_id="1234", telegram_client_secret="fixture-only-secret",
+        telegram_redirect_uri="https://example.test/api/auth/telegram/callback",
+        telegram_auth_max_age_seconds=90))
+    with TestClient(app) as client, patch("app.telegram_oidc.time.time", return_value=1000):
+        response = client.post("/api/auth/telegram/start")
+        assert response.status_code == 200
+        assert "Max-Age=90" in response.headers["set-cookie"]
+        with app.state.database.connection() as db:
+            assert db.execute("SELECT expires_at FROM telegram_login_attempts").fetchone()[0] == 1090
+
+
 def test_real_rs256_signature_claims_and_forgery(tmp_path):
     app = configured_app(tmp_path)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -95,14 +108,30 @@ def test_real_rs256_signature_claims_and_forgery(tmp_path):
     encode = lambda data: jwt.encode(data, key, algorithm="RS256")
     assert app.state.oidc.verify_token(encode(claims))["telegram_id"] == "777"
     assert app.state.oidc.verify_token(encode({**claims, "id": "8247777174"}))["telegram_id"] == "8247777174"
-    for changes in ({"aud": "attacker"}, {"iss": "https://evil.test"}, {"exp": now - 1},
-                    {"iat": now - 301}, {"id": -1}, {"id": True}, {"id": 7.0},
+    for changes in ({"aud": "attacker"}, {"iss": "https://evil.test"}, {"exp": now - 31},
+                    {"iat": now - 331}, {"id": -1}, {"id": True}, {"id": 7.0},
                     {"id": " 777"}, {"id": "+777"}, {"id": "00777"},
                     {"id": "9" * 20}):
         with pytest.raises(OIDCError):
             app.state.oidc.verify_token(encode({**claims, **changes}))
     with pytest.raises(OIDCError):
         app.state.oidc.verify_token(jwt.encode(claims, "synthetic-not-rsa-test-secret-long-enough", algorithm="HS256"))
+
+
+def test_rotated_jwks_keys_and_bounded_clock_skew(tmp_path):
+    app = configured_app(tmp_path)
+    old = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    app.state.oidc.keys = Mock()
+    app.state.oidc.keys.get_signing_key_from_jwt.side_effect = [
+        SimpleNamespace(key=old.public_key()), SimpleNamespace(key=new.public_key())]
+    now = int(time.time())
+    base = {"iss": ISSUER, "aud": "1234", "sub": "opaque", "id": "8247777174",
+            "iat": now + 20, "exp": now - 20}
+    assert app.state.oidc.verify_token(jwt.encode(base, old, algorithm="RS256"))["telegram_id"] == "8247777174"
+    assert app.state.oidc.verify_token(jwt.encode({**base, "iat": now, "exp": now + 60}, new,
+                                                  algorithm="RS256"))["telegram_id"] == "8247777174"
+    assert app.state.oidc.keys.get_signing_key_from_jwt.call_count == 2
 
 
 def test_exchange_reports_only_allowlisted_failure_stage(tmp_path):
@@ -128,6 +157,30 @@ def test_exchange_reports_only_allowlisted_failure_stage(tmp_path):
         with pytest.raises(OIDCError):
             oidc.exchange("private-code", "private-verifier")
         report.assert_not_called()
+
+
+def test_exchange_uses_exact_basic_pkce_request_without_redirects(tmp_path):
+    app = configured_app(tmp_path)
+    oidc = app.state.oidc
+    response = Mock()
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=False)
+    response.raise_for_status.return_value = None
+    response.iter_bytes.return_value = [b'{"id_token":"synthetic-token"}']
+    client = Mock()
+    client.__enter__ = Mock(return_value=client)
+    client.__exit__ = Mock(return_value=False)
+    client.stream.return_value = response
+    with patch("app.telegram_oidc.httpx.Client", return_value=client) as factory, \
+         patch.object(oidc, "verify_token", return_value={"telegram_id":"777"}) as verify:
+        assert oidc.exchange("synthetic-code", "synthetic-verifier") == {"telegram_id":"777"}
+    factory.assert_called_once_with(timeout=10, follow_redirects=False)
+    client.stream.assert_called_once_with("POST", ISSUER + "/token",
+        auth=("1234", "fixture-only-secret"),
+        data={"grant_type":"authorization_code", "code":"synthetic-code",
+              "redirect_uri":"https://example.test/api/auth/telegram/callback",
+              "client_id":"1234", "code_verifier":"synthetic-verifier"})
+    verify.assert_called_once_with("synthetic-token")
 
 
 def test_verify_reports_only_specific_safe_failure_categories(tmp_path):

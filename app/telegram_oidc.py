@@ -14,6 +14,7 @@ from app.observability import report
 
 ISSUER = "https://oauth.telegram.org"
 LOGIN_COOKIE = "student_os_telegram_login"
+CLOCK_SKEW_SECONDS = 30
 
 
 class OIDCError(ValueError):
@@ -59,7 +60,9 @@ class TelegramOIDC:
             if db.execute("SELECT COUNT(*) FROM telegram_login_attempts").fetchone()[0] >= 1000:
                 raise OIDCError("busy")
             db.execute("INSERT INTO telegram_login_attempts VALUES (?,?,?,?,?,?)",
-                       (self.digest(state), self.digest(browser), verifier, now + 300, session_hash, target_user_id))
+                       (self.digest(state), self.digest(browser), verifier,
+                        now + self.config.telegram_auth_max_age_seconds,
+                        session_hash, target_user_id))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         url = ISSUER + "/auth?" + urlencode({"client_id": self.config.telegram_client_id,
             "redirect_uri": self.config.telegram_redirect_uri, "response_type": "code",
@@ -118,6 +121,7 @@ class TelegramOIDC:
         try:
             claims = jwt.decode(token, key, algorithms=["RS256"],
                 audience=self.config.telegram_client_id, issuer=ISSUER,
+                leeway=CLOCK_SKEW_SECONDS,
                 options={"require": ["iss", "aud", "sub", "exp", "iat", "id"]})
         except jwt.InvalidSignatureError:
             report("oidc_verify_signature_failed")
@@ -138,7 +142,9 @@ class TelegramOIDC:
         except jwt.PyJWTError:
             report("oidc_verify_claims_failed")
             raise OIDCError("invalid") from None
-        if type(claims["iat"]) not in {int, float} or abs(time.time() - claims["iat"]) > 300:
+        if (type(claims["iat"]) not in {int, float}
+                or abs(time.time() - claims["iat"]) >
+                self.config.telegram_auth_max_age_seconds + CLOCK_SKEW_SECONDS):
             report("oidc_verify_lifetime_failed")
             raise OIDCError("expired")
         raw_id = claims["id"]

@@ -290,7 +290,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def privacy_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; base-uri 'none'; object-src 'none'; "
+            "frame-ancestors 'none'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; "
+            "form-action 'self'"
+        )
+        if config.environment in {"production", "staging"} and config.secure_cookies:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path.startswith(("/api/", "/admin")):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -472,7 +483,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             url, browser = oidc.begin(token_hash, target)
         except OIDCError:
             raise HTTPException(status_code=503, detail="Вход через Telegram пока недоступен") from None
-        response.set_cookie(LOGIN_COOKIE, browser, max_age=300, httponly=True,
+        response.set_cookie(LOGIN_COOKIE, browser,
+                            max_age=config.telegram_auth_max_age_seconds, httponly=True,
                             secure=config.secure_cookies, samesite="lax", path="/api/auth/telegram")
         response.headers["Cache-Control"] = "no-store"
         return {"url": url}

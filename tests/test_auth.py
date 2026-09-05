@@ -91,6 +91,31 @@ def test_mutations_require_csrf_and_production_has_no_dev_login(tmp_path: Path) 
         assert client.get("/api/bootstrap").status_code == 401
 
 
+def test_production_security_headers_and_same_origin_browser_boundary(tmp_path: Path) -> None:
+    production = create_app(Settings(
+        tmp_path / "headers.db", "", "demo", environment="production",
+        secure_cookies=True))
+    with TestClient(production) as client:
+        response = client.get("/")
+        assert response.headers["strict-transport-security"] == "max-age=31536000"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["cross-origin-opener-policy"] == "same-origin-allow-popups"
+        assert response.headers["cross-origin-resource-policy"] == "same-origin"
+        policy = response.headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in policy
+        assert "connect-src 'self'" in policy
+        assert "script-src 'self'" in policy
+        assert "unsafe-inline" not in policy
+        assert "access-control-allow-origin" not in response.headers
+        assert client.get("/api/auth/session").headers["cache-control"] == "no-store"
+
+    development = app_for(tmp_path / "dev-headers.db")
+    with TestClient(development) as client:
+        assert "strict-transport-security" not in client.get("/").headers
+
+
 def test_dev_admin_is_explicit_and_impossible_in_production(tmp_path: Path) -> None:
     development = create_app(
         Settings(
