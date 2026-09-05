@@ -91,12 +91,12 @@
   <dialog id="importDialog" class="modal import-modal"><div class="modal-card"><div class="modal-head"><div><p class="eyebrow">Безопасный импорт</p><h2>Импорт расписания</h2></div><button type="button" class="icon-button" data-close-dialog="importDialog" aria-label="Закрыть">×</button></div><form id="importForm" class="upload-box"><label>PDF или изображение<input id="scheduleFile" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required></label><p>До 6 МБ. Файл обрабатывается временно и не сохраняется в проекте.</p><button class="primary" type="submit">Распознать</button></form><p class="form-error" id="importError" role="alert"></p><section id="importPreview" hidden><div class="preview-head"><div><h3>Проверьте каждую строку</h3><p class="muted">Ничего не сохранится до подтверждения.</p><p class="filter-note" id="srspFilterNote"></p></div><div class="preview-controls"><label class="preview-toggle"><span>Импортировать СРСП</span><input id="includeSrsp" type="checkbox"></label><button class="secondary" id="addImportRow" type="button">+ Строка</button></div></div><div id="importRows" class="import-rows"></div><div class="modal-actions"><span></span><button class="secondary" type="button" data-close-dialog="importDialog">Отмена</button><button class="primary" id="confirmImport" type="button">Подтвердить импорт</button></div></section></div></dialog>
 
   <dialog id="loginDialog" class="modal"><div class="modal-card"><p class="eyebrow">Student OS</p><h2>Войти через Telegram</h2><p id="loginError" role="status" class="muted"></p><button id="loginTelegram" class="primary" type="button">Войти через Telegram</button></div></dialog>
-  <dialog id="logoutDialog" class="modal"><div class="modal-card"><h2>Выйти из аккаунта?</h2><p class="muted">Данные сохранятся. Для возврата к ним понадобится тот же Telegram-аккаунт. Если Telegram не подключён, сначала подключите его.</p><div class="account-actions"><button id="cancelLogout" class="secondary" type="button">Отмена</button><button id="confirmLogout" class="primary" type="button">Выйти</button></div></div></dialog>
+  <dialog id="logoutDialog" class="modal"><div class="modal-card"><h2>Выйти из аккаунта?</h2><p class="muted">Данные сохранятся. Для возврата к ним понадобится тот же Telegram-аккаунт.</p><p id="logoutError" class="form-error" role="alert"></p><div class="account-actions"><button id="cancelLogout" class="secondary" type="button">Отмена</button><button id="confirmLogout" class="primary" type="button">Выйти</button></div></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/static/pwa.js?v=7" defer></script>
   <script src="/static/restore.js?v=7" defer></script>
   <script src="/static/photo.js?v=5" defer></script>
-  <script src="/static/account.js?v=6" defer></script>
-  <script src="/static/app.js?v=8" defer></script>
+  <script src="/static/account.js?v=7" defer></script>
+  <script src="/static/app.js?v=9" defer></script>
 </body>
 </html>

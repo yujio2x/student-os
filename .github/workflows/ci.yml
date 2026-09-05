@@ -53,6 +53,7 @@ jobs:
         with:
           node-version: "22"
       - run: node tests/pwa_runtime.cjs
+      - run: node tests/account_runtime.cjs
       - uses: actions/checkout@v4
         with:
           repository: yujio2x/student-ai-bot
