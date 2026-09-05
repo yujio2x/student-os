@@ -48,7 +48,8 @@ h3 { font-size:16px; }
 .text-button,.icon-button,.menu-button { border:0; background:transparent; color:var(--accent); cursor:pointer; }
 .icon-button,.menu-button { width:40px; height:40px; border-radius:10px; font-size:20px; }
 .icon-button:hover,.menu-button:hover { background:var(--surface-2); }
-.two-columns { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.two-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.two-columns > *,.section-head { min-width:0; }
 .section-head,.form-foot,.preview-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .stack { display:grid; gap:10px; }
 .list-item { padding:13px 0; border-top:1px solid var(--border); display:flex; gap:13px; align-items:flex-start; }
@@ -171,7 +172,7 @@ textarea { min-height:210px; resize:vertical; }
 @media (max-width:900px) {
   .shell,.shell.sidebar-collapsed { grid-template-columns:1fr; }
   .sidebar { display:none; }
-  .bottom-nav { position:fixed; z-index:25; bottom:0; left:0; width:100%; height:78px; padding:7px 8px 9px; border-top:1px solid var(--border); background:var(--surface); box-shadow:0 -8px 24px rgba(20,20,40,.08); display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
+  .bottom-nav { position:fixed; z-index:25; bottom:0; left:0; width:100%; height:78px; padding:7px 8px 9px; border-top:1px solid var(--border); background:var(--surface); box-shadow:0 -8px 24px rgba(20,20,40,.08); display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
   .bottom-nav .nav-item { min-height:60px; justify-content:center; flex-direction:column; gap:4px; padding:6px 4px; font-size:12px; font-weight:650; text-align:center; }
   .bottom-nav .nav-item.active { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 25%,transparent); }
   .bottom-nav .nav-icon { width:28px; height:25px; flex-basis:25px; font-size:25px; font-weight:700; }
@@ -181,7 +182,7 @@ textarea { min-height:210px; resize:vertical; }
   main { padding:0 16px 104px; }
   .topbar { min-height:92px; grid-template-columns:42px minmax(0,1fr) 42px; gap:6px; }
   .menu-button { display:block; margin-left:-8px; }
-  .two-columns,.study-layout,.settings-grid { grid-template-columns:1fr; }
+  .two-columns,.study-layout,.settings-grid { grid-template-columns:minmax(0,1fr); }
   .settings-column { display:contents; }
   #appearanceSettings { grid-row:1; }
   #scheduleSettings { grid-row:2; }
