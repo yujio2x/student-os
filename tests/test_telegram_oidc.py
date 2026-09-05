@@ -46,6 +46,7 @@ def test_pkce_cookie_binding_replay_owner_and_logout(tmp_path):
         assert "connected" in result.headers["location"]
         session = client.get("/api/auth/session").json()
         assert session["user"]["role"] == "admin"
+        assert session["user"]["is_owner"] is True
         assert client.get("/admin").status_code == 200
         assert result.headers["cache-control"] == "no-store"
         assert client.get(f"/api/auth/telegram/callback?state={state}&code=fixture", follow_redirects=False).headers["location"].endswith("expired#settings")

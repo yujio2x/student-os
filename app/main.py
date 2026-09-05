@@ -317,6 +317,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.photo = photo
     app.state.restore = restore
 
+    def is_verified_owner(user_id: str, role: str) -> bool:
+        if role != "admin":
+            return False
+        if config.environment in {"production", "staging"}:
+            identity = database.telegram_identity(user_id)
+            owner_id = identity["provider_user_id"] if identity else ""
+            return bool(config.owner_telegram_id) and secrets.compare_digest(
+                owner_id, config.owner_telegram_id
+            )
+        return True
+
+    def session_user_payload(user_id: str, display_name: str, role: str) -> dict:
+        return {
+            "id": user_id,
+            "display_name": display_name,
+            "role": role,
+            "is_owner": is_verified_owner(user_id, role),
+        }
+
     def current_session(request: Request) -> dict:
         session = sessions.resolve(request.cookies.get(SESSION_COOKIE))
         if session is None:
@@ -330,15 +349,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return session
 
     def admin_session(session: dict = Depends(current_session)) -> dict:
-        if session["role"] != "admin":
+        if not is_verified_owner(session["user_id"], session["role"]):
             raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
-        if config.environment in {"production", "staging"}:
-            identity = database.telegram_identity(session["user_id"])
-            owner_id = identity["provider_user_id"] if identity else ""
-            if not config.owner_telegram_id or not secrets.compare_digest(
-                owner_id, config.owner_telegram_id
-            ):
-                raise HTTPException(status_code=403, detail="Доступ администратора запрещён")
         return session
 
     def admin_csrf_session(
@@ -420,7 +432,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             httponly=True, secure=config.secure_cookies, samesite="lax", path="/",
         )
         return {
-            "user": {"id": user["id"], "display_name": user["display_name"], "role": user["role"]},
+            "user": session_user_payload(user["id"], user["display_name"], user["role"]),
             "csrf_token": issued.csrf_token, "expires_at": issued.expires_at, "mode": mode,
         }
 
@@ -432,7 +444,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if current:
             identity = database.telegram_identity(current["user_id"])
             return {
-                "user": {"id": current["user_id"], "display_name": current["display_name"], "role": current["role"]},
+                "user": session_user_payload(current["user_id"], current["display_name"], current["role"]),
                 "csrf_token": current["csrf_token"], "expires_at": current["expires_at"],
                 "mode": "telegram" if identity else "guest",
             }
@@ -575,7 +587,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def auth_session(session: dict = Depends(current_session)) -> dict:
         identity = database.telegram_identity(session["user_id"])
         return {
-            "user": {"id": session["user_id"], "display_name": session["display_name"], "role": session["role"]},
+            "user": session_user_payload(session["user_id"], session["display_name"], session["role"]),
             "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
             "mode": "telegram" if identity else "guest",
         }
@@ -612,7 +624,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "ai_mode": "live" if study.client else "demo",
             "photo_available": bool(study.client),
             "session": {
-                "user": {"id": user_id, "display_name": session["display_name"], "role": session["role"]},
+                "user": session_user_payload(user_id, session["display_name"], session["role"]),
                 "csrf_token": session["csrf_token"], "expires_at": session["expires_at"],
                 "mode": "telegram" if telegram_identity else "guest",
             },

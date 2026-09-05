@@ -152,6 +152,7 @@ def test_dev_admin_is_explicit_and_impossible_in_production(tmp_path: Path) -> N
         forged_admin = production.state.database.create_user("Not Telegram", role="admin")
         issued = production.state.sessions.issue(forged_admin["id"])
         client.cookies.set(SESSION_COOKIE, issued.token)
+        assert client.get("/api/auth/session").json()["user"]["is_owner"] is False
         assert client.get("/admin").status_code == 403
         assert client.get("/api/admin/overview").status_code == 403
 

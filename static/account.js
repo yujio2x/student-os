@@ -1,5 +1,5 @@
 // Account actions are also bound before bootstrap, so production login needs no dev session.
-function canonicalAuthState(){const mode=state.session?.mode,linked=Boolean(state.telegram?.identity);if(!state.session)return"loading";if(mode==="guest"&&!linked)return"guest";if(mode==="telegram"&&linked)return state.session.user?.role==="admin"?"owner":"telegram";return"unknown";}
+function canonicalAuthState(){const mode=state.session?.mode,linked=Boolean(state.telegram?.identity);if(!state.session)return"loading";if(mode==="guest"&&!linked)return"guest";if(mode==="telegram"&&linked)return state.session.user?.is_owner===true?"owner":"telegram";return"unknown";}
 async function beginTelegramLogin(button){
   button.disabled=true;const original=button.textContent;button.textContent="Открываю Telegram…";
   try{sessionStorage.setItem("student-os-auth-return",location.hash||"#today");const result=await api("/api/auth/telegram/start",{method:"POST"});location.assign(result.url);}
@@ -19,6 +19,7 @@ function renderAccountActions(){
   connect.hidden=!guest;connect.disabled=!state.telegram?.login_available;connect.textContent="Войти через Telegram";
   document.querySelector("#accountRefresh").hidden=!linked;
   document.querySelector("#accountLogout").hidden=!linked;
+  document.querySelector("#adminPanelLink").hidden=auth!=="owner";
   buy.hidden=!(linked&&entitlement?.purchase_url);
   if(!buy.hidden)buy.href=entitlement.purchase_url;
 }

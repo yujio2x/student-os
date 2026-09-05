@@ -1,5 +1,7 @@
 :root { color-scheme: light; --bg:#f4f5f7; --surface:#fff; --surface-2:#f8f8fa; --text:#17171b; --muted:#6d6d77; --border:#e5e5ea; --accent:#6956e8; --accent-soft:#eeebff; --success:#2c9a67; --danger:#c94747; --shadow:0 12px 36px rgba(25,20,50,.07); }
 [data-theme="dark"] { color-scheme:dark; --bg:#111115; --surface:#1b1b21; --surface-2:#23232b; --text:#f5f4f8; --muted:#a3a1ad; --border:#303039; --accent:#a99cff; --accent-soft:#2e294e; --shadow:0 12px 36px rgba(0,0,0,.22); }
+[data-theme="system"] { color-scheme:light dark; }
+@media (prefers-color-scheme:dark) { [data-theme="system"] { --bg:#111115; --surface:#1b1b21; --surface-2:#23232b; --text:#f5f4f8; --muted:#a3a1ad; --border:#303039; --accent:#a99cff; --accent-soft:#2e294e; --shadow:0 12px 36px rgba(0,0,0,.22); } }
 * { box-sizing:border-box; }
 [hidden] { display:none !important; }
 body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif; }

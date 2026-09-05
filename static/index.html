@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#17171b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Student OS</title>
+  <script src="/static/theme.js?v=1"></script>
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
@@ -70,7 +71,7 @@
       <section id="library" class="page"><div class="card coming-page"><span class="empty-icon">▤</span><p class="eyebrow">Скоро</p><h2>База знаний</h2><p>Проверенные материалы будут организованы по программе, семестру и предмету. Сейчас раздел не имитирует готовую функцию.</p></div></section>
 
       <section id="settings" class="page"><div class="settings-grid">
-        <div class="settings-column"><article class="card settings-card" id="appearanceSettings"><p class="eyebrow">Внешний вид</p><h2>Тема</h2><div class="segmented settings-choice" id="themeChoice"><button data-value="light">Светлая</button><button data-value="dark">Тёмная</button></div></article>
+        <div class="settings-column"><article class="card settings-card" id="appearanceSettings"><p class="eyebrow">Внешний вид</p><h2>Тема</h2><div class="segmented settings-choice" id="themeChoice"><button data-value="light">Светлая</button><button data-value="dark">Тёмная</button><button data-value="system">Системная</button></div></article>
         <article class="card settings-card" id="scheduleSettings"><p class="eyebrow">Расписание</p><h2>Вид по умолчанию</h2><label class="setting-row"><span><strong>На компьютере</strong><small>Сетка недели или выбранный день</small></span><select id="desktopViewSetting"><option value="week">Неделя</option><option value="day">День</option></select></label><label class="setting-row"><span><strong>На телефоне</strong><small>Вертикальный день или вся неделя</small></span><select id="mobileViewSetting"><option value="day">День</option><option value="week">Неделя</option></select></label><h3>Показывать в занятии</h3><div id="settingsFieldOptions" class="settings-fields"></div></article></div>
         <div class="settings-column"><article class="card settings-card" id="aiSettings"><p class="eyebrow">Student AI</p><h2>Telegram и кредиты</h2><div class="status-panel"><span class="status-dot neutral" id="telegramStatusDot"></span><div><strong id="telegramStatusTitle">Проверка подключения…</strong><p id="telegramStatusDetail">Загружаю безопасное состояние аккаунта.</p></div><span class="soon" id="telegramStatusBadge">Foundation</span></div><p id="accountNotice" role="status" class="muted"></p><div class="account-actions"><button class="primary" id="connectTelegram" type="button">Подключить Telegram</button><a class="primary" id="accountBuy" hidden>Купить попытки в Telegram</a><button class="secondary" id="accountRefresh" type="button" hidden>Обновить баланс</button><button class="secondary" id="accountLogout" type="button" hidden>Выйти</button></div><a class="setting-action" id="adminPanelLink" href="/admin" hidden><span><strong>Control Center</strong><small>Только для подтверждённого администратора</small></span><span>›</span></a></article>
         <article class="card settings-card" id="dataSettings"><p class="eyebrow">Данные</p><h2>Управление данными</h2><button class="setting-action" id="settingsImport"><span><strong>Импортировать расписание</strong><small>PDF, PNG или JPG с обязательной проверкой</small></span><span>›</span></button><button class="setting-action" id="exportData"><span><strong>Экспортировать мои данные</strong><small>Настройки, занятия и дедлайны в JSON</small></span><span>↓</span></button><button class="setting-action" id="openFeedback"><span><strong>Есть проблема или предложение?</strong><small>Отправить короткий отзыв владельцу продукта</small></span><span>›</span></button><div class="setting-action disabled"><span><strong>Облачная копия</strong><small>После безопасного входа через Telegram</small></span><span class="soon">Скоро</span></div><div class="setting-action disabled"><span><strong>Восстановление и очистка</strong><small>Появятся только с preview и явным подтверждением</small></span><span class="soon">Скоро</span></div></article></div>
@@ -97,6 +98,6 @@
   <script src="/static/restore.js?v=7" defer></script>
   <script src="/static/photo.js?v=5" defer></script>
   <script src="/static/account.js?v=7" defer></script>
-  <script src="/static/app.js?v=9" defer></script>
+  <script src="/static/app.js?v=10" defer></script>
 </body>
 </html>

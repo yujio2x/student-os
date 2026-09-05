@@ -122,6 +122,7 @@ def test_only_verified_configured_telegram_owner_becomes_admin(tmp_path: Path) -
         )
         assert ordinary.status_code == 200
         assert ordinary.json()["user"]["role"] == "user"
+        assert ordinary.json()["user"]["is_owner"] is False
         assert client.get("/admin").status_code == 403
 
         response = client.post(
@@ -130,4 +131,5 @@ def test_only_verified_configured_telegram_owner_becomes_admin(tmp_path: Path) -
         )
         assert response.status_code == 200
         assert response.json()["user"]["role"] == "admin"
+        assert response.json()["user"]["is_owner"] is True
         assert client.get("/api/admin/overview").status_code == 200

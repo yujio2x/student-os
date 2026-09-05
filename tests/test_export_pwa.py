@@ -85,6 +85,8 @@ def test_pwa_manifest_and_worker_keep_authenticated_data_out_of_cache(tmp_path: 
     assert "beforeinstallprompt" in app_js
     assert "appinstalled" in app_js
     assert "/static/pwa.js" in html
+    assert html.index('/static/theme.js') < html.index('/static/styles.css')
+    assert "/static/theme.js" in worker
     assert 'url.pathname.startsWith("/api/")' in worker
     assert 'url.pathname.startsWith("/admin")' in worker
     assert "PUBLIC_SHELL.includes(url.pathname)" in worker
