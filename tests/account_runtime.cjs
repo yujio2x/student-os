@@ -2,6 +2,8 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const vm=require("node:vm");
 
+assert.match(fs.readFileSync("static/styles.css","utf8"),/\[hidden\]\s*\{\s*display:none\s*!important;\s*\}/,"semantic hidden state must override component display rules");
+
 function node(){return{hidden:true,disabled:false,textContent:"",href:"",open:false,events:{},
   addEventListener(name,handler){this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;}};}
 
