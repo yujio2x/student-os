@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.ai_service import StudyService
 from app.auth import SESSION_COOKIE, SessionService
 from app.bridge_auth import BridgeAuthError, BridgeAuthenticator, BridgeRateLimitError, BridgeBodyLimitMiddleware
-from app.config import Settings, load_settings
+from app.config import APP_NAME, APP_VERSION, Settings, load_settings, project_metadata
 from app.database import (
     AdminActionConflict, Database, DeadlineConflictError, ExternalIdentityConflict,
     LessonConflictError,
@@ -283,7 +283,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with suppress(asyncio.CancelledError):
                 await cleanup_task
 
-    app = FastAPI(title="Student OS", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
     app.add_middleware(BridgeBodyLimitMiddleware)
 
     @app.middleware("http")
@@ -618,6 +618,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "purchase_url": purchase_url(),
         }
         return {
+            "project": project_metadata(config),
             "lessons": database.lessons(user_id),
             "deadlines": database.deadlines(user_id),
             "preferences": database.preferences(user_id),

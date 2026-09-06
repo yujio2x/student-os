@@ -134,6 +134,9 @@ textarea { min-height:210px; resize:vertical; }
 .settings-fields { display:grid; gap:5px; }
 .settings-fields label,.field-options label { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; }
 .settings-field { padding:7px 0; border-top:1px solid var(--border); }
+.about-description { margin:0 0 16px; color:var(--muted); line-height:1.55; }
+.about-value { text-align:right; }
+.about-signoff { margin:16px 0 0; color:var(--muted); font-size:13px; }
 .status-panel { display:flex; align-items:flex-start; gap:12px; padding:15px; border-radius:12px; background:var(--surface-2); }
 .status-panel p { margin:3px 0 0; color:var(--muted); }
 .setting-action { width:100%; display:flex; align-items:center; justify-content:space-between; gap:15px; padding:14px 0; border:0; border-top:1px solid var(--border); background:transparent; color:var(--text); text-align:left; cursor:pointer; }
@@ -191,6 +194,7 @@ textarea { min-height:210px; resize:vertical; }
   #scheduleSettings { grid-row:2; }
   #aiSettings { grid-row:3; }
   #dataSettings { grid-row:4; }
+  #aboutSettings { grid-row:5; }
   .study-form { position:static; }
   .schedule-actions { align-items:flex-start; }
   .action-group { flex-wrap:wrap; justify-content:flex-end; }

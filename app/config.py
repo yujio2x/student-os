@@ -1,10 +1,49 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
+
+
+APP_NAME = "Student OS"
+APP_VERSION = "0.1.0"
+APP_VERSION_LABEL = f"v{APP_VERSION.removesuffix('.0')} Beta"
+APP_DESCRIPTION = (
+    "Student OS — приложение для студентов с расписанием, дедлайнами, "
+    "календарём и Student AI."
+)
+DEFAULT_PROJECT_GITHUB_URL = "https://github.com/yujio2x/student-os"
+
+
+def valid_public_url(value: str, allowed_hosts: frozenset[str]) -> str:
+    value = value.strip()
+    if any(character.isspace() or character == "\\" for character in value):
+        return ""
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return ""
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or parsed.hostname.lower() not in allowed_hosts
+    ):
+        return ""
+    return value
+
+
+def valid_support_email(value: str) -> str:
+    value = value.strip()
+    if len(value) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        return ""
+    return value
 
 
 @dataclass(frozen=True)
@@ -28,6 +67,25 @@ class Settings:
     telegram_client_secret: str = ""
     telegram_redirect_uri: str = ""
     database_url: str = field(default="", repr=False)
+    project_github_url: str = DEFAULT_PROJECT_GITHUB_URL
+    project_telegram_url: str = ""
+    support_email: str = ""
+
+
+def project_metadata(settings: Settings) -> dict[str, str]:
+    return {
+        "name": APP_NAME,
+        "version": APP_VERSION_LABEL,
+        "description": APP_DESCRIPTION,
+        "github_url": valid_public_url(
+            settings.project_github_url, frozenset({"github.com", "www.github.com"})
+        ),
+        "telegram_url": valid_public_url(
+            settings.project_telegram_url,
+            frozenset({"t.me", "telegram.me", "www.telegram.me"}),
+        ),
+        "support_email": valid_support_email(settings.support_email),
+    }
 
 
 def load_settings() -> Settings:
@@ -62,4 +120,9 @@ def load_settings() -> Settings:
         telegram_client_secret=os.getenv("TELEGRAM_CLIENT_SECRET", "").strip(),
         telegram_redirect_uri=os.getenv("TELEGRAM_REDIRECT_URI", "").strip(),
         database_url=os.getenv("DATABASE_URL", "").strip(),
+        project_github_url=os.getenv(
+            "PROJECT_GITHUB_URL", DEFAULT_PROJECT_GITHUB_URL
+        ).strip(),
+        project_telegram_url=os.getenv("PROJECT_TELEGRAM_URL", "").strip(),
+        support_email=os.getenv("SUPPORT_EMAIL", "").strip(),
     )
