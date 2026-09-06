@@ -1547,3 +1547,38 @@ state to start exactly one legacy lock if required. Core validation passed all f
 runtimes and 121 tests with 31 expected skips; Bot compile and 98 tests passed with four
 expected skips. Tracked-file secret-shape scans found no credential-shaped values; the
 only tracked sensitive-name files are placeholder-only `.env.example` files.
+
+## 2026-09-06 — Settings / About post-beta polish
+
+Added one informational `О проекте` card to the existing Settings composition without
+changing auth, OIDC, billing, entitlements, PostgreSQL, deployment topology or Bot code.
+The card shows Student OS, canonical UI version `v0.1 Beta`, the short product description,
+the configured GitHub link and the restrained signoff `Сделано студентом для студентов.`
+The existing feedback action remains in the Data card and was reused as-is; no parallel
+feedback system was introduced.
+
+The application number now has one source in `app.config`: FastAPI consumes `0.1.0` and
+the UI label is derived from it. Public metadata is delivered in the same bootstrap for
+guest, normal and owner sessions with no auth/admin branching. `PROJECT_GITHUB_URL`,
+`PROJECT_TELEGRAM_URL` and `SUPPORT_EMAIL` are documented non-secret config entries.
+GitHub defaults to the public repository. Telegram and support default to empty and their
+rows have neither visible UI nor an `href` unless a validated value exists. Backend and
+browser validators require HTTPS plus the expected GitHub/Telegram hosts, reject embedded
+credentials, fragments, whitespace and backslashes, validate email syntax, and render
+support as `mailto:`. External links use `noopener noreferrer`.
+
+Regression covers required copy/version/link, missing and configured optional contacts,
+invalid destinations, no empty href, safe external-link attributes, guest and normal-user
+visibility and absence of auth/admin dependency. Full validation: all five frontend runtime
+checks passed; Core suite 124 passed with 31 expected environment skips and the known
+Starlette/httpx deprecation warning. Python compile, JavaScript syntax, diff and tracked/
+diff secret-shape scans passed with zero credential-shaped matches.
+
+Local browser QA passed desktop light and mobile 390x844 light/dark; the About card stays
+within the viewport and follows the natural fifth-card mobile order. Core commit `5821ccc`
+passed GitHub Actions run `34010269021` and deployed alone as Heroku release v31. Production
+guest QA at `https://student-os.dev/#settings` confirms the settled app uses the new assets,
+shows `v0.1 Beta` and the exact GitHub URL, hides unset Telegram/support rows and has no
+horizontal overflow at 390x844. The initial reload shell can briefly show placeholders
+before bootstrap; it settles automatically without a manual refresh. Cloud Bot was not
+changed, restarted or scaled during this unit.
