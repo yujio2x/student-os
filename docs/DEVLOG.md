@@ -1514,3 +1514,36 @@ settled guest remains dark. Cloud Bot has no dynos (worker=0). The legacy local 
 and its Ready scheduled task were not changed. Mobile viewport QA and owner-authenticated
 Admin → logout → guest → relogin UI remain manual checks; Codex's isolated guest browser is
 not an authoritative Telegram OIDC environment.
+
+## 2026-09-06 — Student OS v0.1 invited-beta release gate
+
+Completed the coordinated Core/Bot beta gate without changing product or billing logic.
+The owner rotated the remaining Telegram bot token through the official provider and
+manually saved it into the two existing Doppler stg configs; runtime presence checks
+passed without reading or printing the value. Core remains in production mode with
+development login/admin disabled, custom-domain health `200/ok`, PostgreSQL Essential-0
+Available, HTTPS valid and the previously owner-verified Telegram identity/admin flow.
+
+Before cutover, the Bot cloud preflight passed imports, shared PostgreSQL connectivity
+and outbox reads (`pending=0`, `delivered=1`). Signed bridge health/catalog and missing,
+stale, wrong-endpoint, malformed, replay and oversized-request rejection all passed.
+One bounded Core Eco restart returned to health on the new web process. A fresh verified
+legacy SQLite backup was created at `20260906T024353Z`; Heroku PostgreSQL backup `b002`
+completed successfully.
+
+The legacy local bot was stopped before cloud scale-up and remained stopped: zero
+supervisors, bot processes and lock listeners. The expected `StudentAIBot` Scheduled Task
+was already absent; no matching Windows service, Registry Run entry, Startup-folder item
+or WMI subscription was found, so no reboot/logon autorestart path remained to disable or
+delete. The cloud polling latch was enabled through the existing Doppler integration and
+the Bot was scaled from zero to exactly one Eco worker. Production emitted exactly one
+`CLOUD_POLLING_LEASE_ACQUIRED` marker, with no current conflict, traceback or error signal.
+
+Owner smoke passed `/start`, `/balance`, a normal text analysis, `Как защитить` and `/buy`.
+No real Telegram Stars purchase was made. Post-smoke Core health stayed `ok`; the aggregate
+outbox remained `pending=0`, `delivered=1`. Rollback remains reversible: scale the cloud
+worker to zero first, disable the polling latch, then use the recorded local controller
+state to start exactly one legacy lock if required. Core validation passed all frontend
+runtimes and 121 tests with 31 expected skips; Bot compile and 98 tests passed with four
+expected skips. Tracked-file secret-shape scans found no credential-shaped values; the
+only tracked sensitive-name files are placeholder-only `.env.example` files.
