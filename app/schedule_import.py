@@ -4,13 +4,25 @@ import base64
 import io
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from openai import OpenAI
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader
 
 
 MAX_UPLOAD_BYTES = 6 * 1024 * 1024
+MAX_IMAGE_WIDTH = 3_000
+MAX_IMAGE_HEIGHT = 40_000
+MAX_DECODED_PIXELS = 40_000_000
+MAX_IMAGE_ASPECT_RATIO = 50
+MAX_IMAGE_TILES = 16
+MAX_TOTAL_RECOGNITION_PIXELS = 45_000_000
+MAX_TOTAL_RECOGNITION_BYTES = 30 * 1024 * 1024
+IMAGE_TILE_HEIGHT = 2_400
+IMAGE_TILE_OVERLAP = 240
+MAX_TILE_OUTPUT_TOKENS = 1_800
 ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg"}
 DAY_NAMES = {
     "понедельник": 0, "вторник": 1, "среда": 2, "четверг": 3,
@@ -67,6 +79,22 @@ class ScheduleImportError(ValueError):
     pass
 
 
+@dataclass(frozen=True)
+class ImageTile:
+    data: bytes
+    mime: str
+    top: int
+    bottom: int
+    width: int
+
+
+@dataclass(frozen=True)
+class PreparedImage:
+    original_size: tuple[int, int]
+    decoded_size: tuple[int, int]
+    tiles: tuple[ImageTile, ...]
+
+
 class ScheduleImportService:
     def __init__(self, api_key: str, model: str) -> None:
         self.client = OpenAI(api_key=api_key) if api_key else None
@@ -83,36 +111,179 @@ class ScheduleImportService:
 
         if suffix == ".pdf":
             return self._extract_pdf(data)
-        self._validate_image(suffix, data)
+        prepared = self._prepare_image(suffix, data)
         if self.client is None:
             raise ScheduleImportError(
                 "Для распознавания изображений нужен OPENAI_API_KEY. "
                 "Файл не был сохранён."
             )
-        mime = "image/png" if suffix == ".png" else "image/jpeg"
-        encoded = base64.b64encode(data).decode("ascii")
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=IMPORT_INSTRUCTIONS,
-            input=[{
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": "Извлеки все занятия с изображения."},
-                    {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}", "detail": "high"},
-                ],
-            }],
-            max_output_tokens=3000,
-            reasoning={"effort": "low"},
-            text={"format": {"type": "json_schema", "name": "schedule_preview", "schema": IMPORT_SCHEMA, "strict": True}},
-            store=False,
-        )
-        return self._normalize(json.loads(response.output_text).get("lessons", []))
+        raw_lessons: list[dict] = []
+        successful_tiles = 0
+        last_error: Exception | None = None
+        for tile_number, tile in enumerate(prepared.tiles, start=1):
+            try:
+                response = self.client.responses.create(
+                    model=self.model,
+                    instructions=IMPORT_INSTRUCTIONS,
+                    input=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": (
+                                    "Извлеки все занятия с этого фрагмента расписания. "
+                                    f"Фрагмент {tile_number} из {len(prepared.tiles)}; "
+                                    "не дублируй строки внутри фрагмента."
+                                ),
+                            },
+                            {
+                                "type": "input_image",
+                                "image_url": (
+                                    f"data:{tile.mime};base64,"
+                                    f"{base64.b64encode(tile.data).decode('ascii')}"
+                                ),
+                                "detail": "high",
+                            },
+                        ],
+                    }],
+                    max_output_tokens=MAX_TILE_OUTPUT_TOKENS,
+                    reasoning={"effort": "low"},
+                    text={"format": {"type": "json_schema", "name": "schedule_preview", "schema": IMPORT_SCHEMA, "strict": True}},
+                    store=False,
+                )
+                parsed = json.loads(response.output_text)
+                lessons = parsed.get("lessons")
+                if not isinstance(lessons, list):
+                    raise ValueError("recognizer returned no lesson list")
+                successful_tiles += 1
+                raw_lessons.extend(item for item in lessons if isinstance(item, dict))
+            except Exception as exc:
+                last_error = exc
 
-    @staticmethod
-    def _validate_image(suffix: str, data: bytes) -> None:
+        if successful_tiles == 0 and last_error is not None:
+            raise last_error
+        if not raw_lessons:
+            raise ScheduleImportError(
+                "На изображении не удалось найти занятия. Проверьте, что текст расписания читаем."
+            )
+        try:
+            normalized = self._normalize(raw_lessons)
+        except ScheduleImportError as exc:
+            raise ScheduleImportError(
+                "Расписание распознано частично, но в строках не хватает дня или времени."
+            ) from exc
+        return self._deduplicate_and_sort(normalized)
+
+    @classmethod
+    def _prepare_image(cls, suffix: str, data: bytes) -> PreparedImage:
         valid = data.startswith(b"\x89PNG\r\n\x1a\n") if suffix == ".png" else data.startswith(b"\xff\xd8\xff")
         if not valid:
             raise ScheduleImportError("Изображение повреждено или имеет неверный формат")
+        expected_format = "PNG" if suffix == ".png" else "JPEG"
+        try:
+            with Image.open(io.BytesIO(data)) as source:
+                original_size = source.size
+                if source.format != expected_format:
+                    raise ScheduleImportError("Изображение повреждено или имеет неверный формат")
+                cls._validate_geometry(*original_size)
+                normalized = ImageOps.exif_transpose(source)
+                decoded_size = normalized.size
+                cls._validate_geometry(*decoded_size)
+                normalized.load()
+                if normalized.mode not in {"RGB", "L"}:
+                    background = Image.new("RGB", normalized.size, "white")
+                    if "A" in normalized.getbands():
+                        background.paste(normalized, mask=normalized.getchannel("A"))
+                    else:
+                        background.paste(normalized.convert("RGB"))
+                    normalized = background
+                elif normalized.mode != "RGB":
+                    normalized = normalized.convert("RGB")
+
+                ranges = cls._tile_ranges(normalized.height)
+                if len(ranges) > MAX_IMAGE_TILES:
+                    raise cls._geometry_error()
+                work = sum(normalized.width * (bottom - top) for top, bottom in ranges)
+                if work > MAX_TOTAL_RECOGNITION_PIXELS:
+                    raise cls._geometry_error()
+                tiles: list[ImageTile] = []
+                encoded_bytes = 0
+                for top, bottom in ranges:
+                    tile = cls._encode_tile(normalized, suffix, top, bottom)
+                    encoded_bytes += len(tile.data)
+                    if encoded_bytes > MAX_TOTAL_RECOGNITION_BYTES:
+                        raise cls._geometry_error()
+                    tiles.append(tile)
+                return PreparedImage(original_size, decoded_size, tuple(tiles))
+        except ScheduleImportError:
+            raise
+        except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+            raise ScheduleImportError(
+                "Изображение повреждено или имеет неверный формат"
+            ) from exc
+
+    @staticmethod
+    def _geometry_error() -> ScheduleImportError:
+        return ScheduleImportError(
+            "Изображение слишком большое или слишком вытянутое. Разделите его на несколько частей."
+        )
+
+    @classmethod
+    def _validate_geometry(cls, width: int, height: int) -> None:
+        if width <= 0 or height <= 0:
+            raise ScheduleImportError("Изображение повреждено или имеет неверный формат")
+        ratio = max(width / height, height / width)
+        if (
+            width > MAX_IMAGE_WIDTH
+            or height > MAX_IMAGE_HEIGHT
+            or width * height > MAX_DECODED_PIXELS
+            or ratio > MAX_IMAGE_ASPECT_RATIO
+        ):
+            raise cls._geometry_error()
+
+    @staticmethod
+    def _tile_ranges(height: int) -> list[tuple[int, int]]:
+        if height <= IMAGE_TILE_HEIGHT:
+            return [(0, height)]
+        ranges: list[tuple[int, int]] = []
+        top = 0
+        while top < height:
+            bottom = min(height, top + IMAGE_TILE_HEIGHT)
+            ranges.append((top, bottom))
+            if bottom == height:
+                break
+            top = bottom - IMAGE_TILE_OVERLAP
+        return ranges
+
+    @staticmethod
+    def _encode_tile(image: Image.Image, suffix: str, top: int, bottom: int) -> ImageTile:
+        tile = image.crop((0, top, image.width, bottom))
+        output = io.BytesIO()
+        if suffix == ".png":
+            tile.save(output, format="PNG", optimize=True)
+            mime = "image/png"
+        else:
+            tile.save(output, format="JPEG", quality=92, subsampling=0, optimize=True)
+            mime = "image/jpeg"
+        return ImageTile(output.getvalue(), mime, top, bottom, image.width)
+
+    @staticmethod
+    def _deduplicate_and_sort(items: list[dict]) -> list[dict]:
+        def text(value: object) -> str:
+            return " ".join(str(value or "").casefold().split()).strip(" ,.;")
+
+        unique: dict[tuple[object, ...], dict] = {}
+        fields = (
+            "weekday", "starts_at", "ends_at", "subject", "lesson_type",
+            "location", "room", "teacher", "group_name",
+        )
+        for item in items:
+            key = tuple(item[field] if field == "weekday" else text(item[field]) for field in fields)
+            unique.setdefault(key, item)
+        return sorted(
+            unique.values(),
+            key=lambda item: (item["weekday"], item["starts_at"], item["ends_at"], text(item["subject"])),
+        )
 
     def _extract_pdf(self, data: bytes) -> list[dict]:
         if not data.startswith(b"%PDF-"):
