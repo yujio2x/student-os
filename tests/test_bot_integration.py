@@ -142,7 +142,7 @@ def test_photo_setup_shared_between_bot_and_web(integration):
     assert response.status_code == 200
     assert response.json()["how_to_defend"]
     answer = bot.answer_photo(identity, session["session_id"], [2], "bot-photo-shared")
-    assert answer["checks"]
+    assert answer["answer"]
     assert bot.get_entitlement(identity)["entitlement"]["balance"] == 0
     with pytest.raises(error):
         bot.confirm_photo(identity, data, "image/png", quote["quote_id"])
