@@ -71,7 +71,7 @@ class StudyResult:
         # Compatibility aliases keep older Web/Telegram clients usable during rollout.
         result.update({
             "analysis": "",
-            "explanation": self.solution,
+            "explanation": f"{self.solution}\n\nОтвет\n{self.answer}".strip(),
             "approach": [],
             "checks": [self.optional_check] if self.optional_check else [],
             "how_to_defend": "\n".join(self.defense_points),

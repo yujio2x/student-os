@@ -48,6 +48,7 @@ def test_structured_response_continues_with_bound_store_false_and_counts_tokens(
 
     assert result.to_dict()["defense_points"] == PAYLOAD["defense_points"]
     assert result.to_dict()["how_to_defend"] == PAYLOAD["defense_points"][0]
+    assert "Массив отсортирован." in result.to_dict()["explanation"]
     assert result.usage() == (40, 60)
     assert len(responses.requests) == 2
     assert all(request["store"] is False for request in responses.requests)
