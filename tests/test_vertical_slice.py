@@ -51,7 +51,7 @@ def test_visible_ui_uses_student_ai_and_russian_labels(client: TestClient) -> No
 
     assert "Student AI" in html
     assert "AI Study" not in html
-    assert "Задание → понимание → защита" in html
+    assert "Задание → решение → защита" in html
     assert "Assignment" not in html
     assert "brand-mark" not in html
     assert "Открыть меню" in html
@@ -82,8 +82,7 @@ def test_assignment_analysis_has_defense_and_does_not_auto_save_deadline(client:
     result = response.json()
     assert result["subject"] == "Алгоритмы"
     assert result["how_to_defend"]
-    assert len(result["defense_questions"]) >= 2
-    assert len(result["pitfalls"]) >= 1
+    assert 1 <= len(result["defense_points"]) <= 3
     assert result["suggested_due_at"] == "2026-09-10T17:30"
     assert client.get("/api/bootstrap").json()["deadlines"] == []
 
@@ -141,6 +140,7 @@ def test_unicode_and_prompt_injection_stay_inside_response_contract(client: Test
     assert set(result) == {
         "subject", "assignment_title", "analysis", "explanation", "approach", "checks",
         "how_to_defend", "defense_questions", "pitfalls", "suggested_due_at", "mode",
+        "solution", "answer", "defense_points", "optional_check",
     }
     assert result["suggested_due_at"] is None
     assert result["how_to_defend"]

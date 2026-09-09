@@ -1623,3 +1623,41 @@ saved. The first preview exposed and the same unit fixed a boundary-day duplicat
 second exposed teacher OCR variation in an otherwise identical overlap duplicate; the
 final production preview verifies both regressions are gone. Cloud Bot, auth, billing,
 entitlements, database architecture and deployment topology were not changed.
+
+## 2026-09-09 — Compact Student AI responses and Telegram delivery quality
+
+Replaced the verbose mandatory understanding/explanation/approach/check contract with one
+shared semantic result: `solution`, `answer`, one to three `defense_points`, and an
+`optional_check`. The prompt now defaults to Russian unless the user explicitly requests
+another language, selects only requested tasks, scales detail to difficulty, avoids
+restating the problem and repeated conclusions, and asks for Unicode math. The Responses
+call uses low verbosity. Compatibility aliases keep an older Web or Telegram client usable
+during rollout without making the model generate duplicated legacy sections.
+
+Web renders `Решение`, `Ответ`, an actually useful optional check, and concise `Как
+защитить` points. Telegram renders the same canonical result as safe plain text and
+normalizes the small model-emitted LaTeX subset into readable Unicode such as `π/2`, `√21`
+and `x²`; it does not opt into Telegram markup parsing, so `<`, `>`, `&`, `_` and `*`
+remain safe literal content. The service worker shell version was advanced so stale PWA
+clients replace the former four-section UI.
+
+The duplicate audit found that Core already binds reservation and generation to the stable
+Telegram request ID, but the adapter had no delivery latch and rendered Core's replay 409
+as another visible message. A bounded 24-hour per-worker delivery latch now claims the
+stable chat/message key before submission, suppresses duplicate updates and uncertain-send
+retries, and treats a Core replay conflict as silent. This preserves one AI call and one
+charge. Truncation continuation remains limited to genuine `max_output_tokens` responses;
+it now appends only the missing JSON suffix instead of asking the model to regenerate the
+whole answer.
+
+Representative regression inputs cover trivial and non-trivial complex-number conversion,
+polar-to-rectangular conversion, multi-step algebra and a harder proof. Contract checks are
+semantic rather than exact prose. Telegram regression covers Russian headings, Unicode
+and Kazakh text, raw LaTeX removal, literal markup characters, duplicate update, Core
+request replay and uncertain send timeout.
+
+Local validation passed the complete Core suite (139 passed, 31 expected environment
+skips), all Student AI frontend/runtime and JavaScript syntax checks, Python compile, diff
+checks and tracked-file credential-pattern scans. The Bot repository separately passed its
+complete 102-test suite with four expected PostgreSQL skips before the final timeout case;
+the final focused adapter suite passed 12 tests.
