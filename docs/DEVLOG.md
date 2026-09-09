@@ -1582,3 +1582,44 @@ shows `v0.1 Beta` and the exact GitHub URL, hides unset Telegram/support rows an
 horizontal overflow at 390x844. The initial reload shell can briefly show placeholders
 before bootstrap; it settles automatically without a manual refresh. Cloud Bot was not
 changed, restarted or scaled during this unit.
+
+## 2026-09-09 — Long screenshot schedule import
+
+Fixed the production failure where a tall scrolling schedule screenshot reached the
+vision recognizer as one full-height image and its text was downscaled until no valid
+lessons remained. The image path now performs a real Pillow decode, rejects format/header
+mismatches and unsafe geometry before full decode, applies EXIF orientation, normalizes to
+RGB, and divides tall images into independently recognized vertical tiles. PDF and
+Platonus digital-text parsing were not changed.
+
+Tiles are 3,000 px high with 600 px overlap so a boundary lesson retains nearby day
+context. The recognizer is explicitly told to skip a cropped row whose own day heading is
+not visible; its overlapping neighbour supplies the complete copy. Results are normalized,
+sorted by weekday/time and deduplicated by stable lesson identity (day, times, subject,
+type, location, room and group), so harmless OCR variation in teacher names across two
+tiles does not create duplicates while different rooms/groups remain distinct. Partial
+tile failure preserves valid rows from other tiles.
+
+Resource limits remain explicit: 6 MiB upload, 3,000 px width, 40,000 px height,
+40 million decoded pixels, 50:1 aspect ratio, at most 16 tiles, 50 million total
+recognition pixels, 30 MiB total encoded tile payload and 1,800 output tokens per tile.
+The UI now receives distinct messages for no detected lessons, unsafe geometry and
+recognized rows missing required day/time fields. No image content is logged.
+
+Regression coverage includes normal and tall screenshots, overlap geometry, a lesson at a
+tile boundary with its day heading, exact and teacher-OCR-variant deduplication, different
+rooms, deterministic ordering, maximum tile bounds, absurd/pixel-bomb geometry, EXIF
+rotation, partial tile failure and distinct parser errors. The complete Core suite passed
+135 tests with 31 expected environment skips before the final boundary hardening; the
+final focused suite passed 13 tests, Python/JavaScript syntax and diff checks. GitHub
+Actions runs 34352854846, 34354718384 and 34355338652 all completed successfully for
+commits `984286b`, `d13899e` and `d518ecd`.
+
+Heroku release v34 deployed `d518ecd`. Production QA used a sanitized synthetic
+1080x6200 scrolling screenshot and stopped at preview: HTTP 200, 10 rows, 10 unique stable
+lesson identities, chronological order, two lessons for each weekday Monday-Friday, and
+`СРСП` excluded by default. The preview was never confirmed, so no schedule data was
+saved. The first preview exposed and the same unit fixed a boundary-day duplicate; the
+second exposed teacher OCR variation in an otherwise identical overlap duplicate; the
+final production preview verifies both regressions are gone. Cloud Bot, auth, billing,
+entitlements, database architecture and deployment topology were not changed.
