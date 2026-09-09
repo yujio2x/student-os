@@ -278,7 +278,7 @@ class ScheduleImportService:
         unique: dict[tuple[object, ...], dict] = {}
         fields = (
             "weekday", "starts_at", "ends_at", "subject", "lesson_type",
-            "location", "room", "teacher", "group_name",
+            "location", "room", "group_name",
         )
         for item in items:
             key = tuple(item[field] if field == "weekday" else text(item[field]) for field in fields)

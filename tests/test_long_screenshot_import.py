@@ -115,6 +115,15 @@ def test_overlap_duplicate_is_removed_but_different_room_survives():
     assert [row["room"] for row in rows] == ["613 Б", "614 Б"]
 
 
+def test_overlap_duplicate_with_teacher_ocr_variation_is_removed():
+    first = lesson()
+    second = dict(first, teacher="Балтабек А.А.")
+    importer = service([[first], [second]])
+    rows = importer.extract("schedule.png", "image/png", image_bytes(height=5000))
+    assert len(rows) == 1
+    assert rows[0]["teacher"] == "Балғабек А.А."
+
+
 def test_very_long_valid_screenshot_stays_bounded():
     height = IMAGE_TILE_HEIGHT + (MAX_IMAGE_TILES - 1) * (IMAGE_TILE_HEIGHT - IMAGE_TILE_OVERLAP)
     ScheduleImportService._validate_geometry(800, height)
