@@ -78,10 +78,14 @@ def test_normal_screenshot_still_uses_one_recognition_tile():
 def test_tall_screenshot_tiles_with_overlap_and_imports_in_order():
     data = image_bytes(height=7000)
     prepared = ScheduleImportService._prepare_image(".png", data)
-    assert len(prepared.tiles) == 4
+    assert len(prepared.tiles) == 3
     assert prepared.original_size == prepared.decoded_size == (1080, 7000)
     assert prepared.tiles[0].bottom - prepared.tiles[1].top == IMAGE_TILE_OVERLAP
-    importer = service([[lesson("Позднее", 2, "12:00", end="12:50")], [], [lesson("Раньше", 0)], []])
+    importer = service([
+        [lesson("Позднее", 2, "12:00", end="12:50")],
+        [],
+        [lesson("Раньше", 0)],
+    ])
     rows = importer.extract("schedule.png", "image/png", data)
     assert [row["subject"] for row in rows] == ["Раньше", "Позднее"]
 
@@ -93,16 +97,27 @@ def test_lesson_crossing_boundary_is_wholly_visible_in_an_overlapping_tile():
     assert any(tile.top <= card_top and tile.bottom >= card_bottom for tile in prepared.tiles)
 
 
+def test_overlap_keeps_day_heading_with_a_boundary_lesson():
+    prepared = ScheduleImportService._prepare_image(".png", image_bytes(height=5000))
+    boundary = IMAGE_TILE_HEIGHT
+    day_heading_top = boundary - 550
+    lesson_bottom = boundary + 40
+    assert any(
+        tile.top <= day_heading_top and tile.bottom >= lesson_bottom
+        for tile in prepared.tiles
+    )
+
+
 def test_overlap_duplicate_is_removed_but_different_room_survives():
     same = lesson()
     importer = service([[same], [dict(same)], [lesson(room="614 Б")]])
-    rows = importer.extract("schedule.png", "image/png", image_bytes(height=5000))
+    rows = importer.extract("schedule.png", "image/png", image_bytes(height=7000))
     assert [row["room"] for row in rows] == ["613 Б", "614 Б"]
 
 
 def test_very_long_valid_screenshot_stays_bounded():
     height = IMAGE_TILE_HEIGHT + (MAX_IMAGE_TILES - 1) * (IMAGE_TILE_HEIGHT - IMAGE_TILE_OVERLAP)
-    ScheduleImportService._validate_geometry(720, height)
+    ScheduleImportService._validate_geometry(800, height)
     assert len(ScheduleImportService._tile_ranges(height)) == MAX_IMAGE_TILES
 
 

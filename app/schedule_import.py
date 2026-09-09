@@ -18,10 +18,10 @@ MAX_IMAGE_HEIGHT = 40_000
 MAX_DECODED_PIXELS = 40_000_000
 MAX_IMAGE_ASPECT_RATIO = 50
 MAX_IMAGE_TILES = 16
-MAX_TOTAL_RECOGNITION_PIXELS = 45_000_000
+MAX_TOTAL_RECOGNITION_PIXELS = 50_000_000
 MAX_TOTAL_RECOGNITION_BYTES = 30 * 1024 * 1024
-IMAGE_TILE_HEIGHT = 2_400
-IMAGE_TILE_OVERLAP = 240
+IMAGE_TILE_HEIGHT = 3_000
+IMAGE_TILE_OVERLAP = 600
 MAX_TILE_OUTPUT_TOKENS = 1_800
 ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg"}
 DAY_NAMES = {
@@ -133,7 +133,10 @@ class ScheduleImportService:
                                 "text": (
                                     "Извлеки все занятия с этого фрагмента расписания. "
                                     f"Фрагмент {tile_number} из {len(prepared.tiles)}; "
-                                    "не дублируй строки внутри фрагмента."
+                                    "не дублируй строки внутри фрагмента. Не приписывай "
+                                    "обрезанную строку следующему видимому дню: если для "
+                                    "занятия не виден собственный заголовок дня, пропусти "
+                                    "его — соседний фрагмент содержит перекрытие."
                                 ),
                             },
                             {
