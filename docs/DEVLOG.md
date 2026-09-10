@@ -1661,3 +1661,19 @@ skips), all Student AI frontend/runtime and JavaScript syntax checks, Python com
 checks and tracked-file credential-pattern scans. The Bot repository separately passed its
 complete 102-test suite with four expected PostgreSQL skips before the final timeout case;
 the final focused adapter suite passed 12 tests.
+
+## 2026-09-10 — Student AI quality production rollout
+
+GitHub Actions completed successfully for Core commit `8981ee5` and Bot commit
+`b49ffc4`. The rolling deployment updated Core first because its compatibility aliases
+keep the previous Telegram adapter usable, then updated Bot after Core health returned
+`ok`. Heroku released Core as v35 and the Bot as v19 without changing dyno formation,
+database resources, billing, entitlements or payment rules.
+
+Production assets expose the compact `Решение`, `Ответ` and `Как защитить` presentation
+and no longer contain the former mandatory `Понимание задания` or `Подход` headings. One
+owner-run Telegram smoke, `Convert 2i to polar form.`, returned a single compact Russian
+answer with a useful check, readable `π` notation and no raw LaTeX delimiters. The
+separate defense message appeared only after the owner pressed `Как защитить`, so it was
+an explicit interaction rather than duplicate delivery. Heroku showed one Eco worker,
+one polling lease acquisition and a healthy restart of `worker.1` after the release.
