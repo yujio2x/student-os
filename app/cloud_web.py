@@ -22,4 +22,11 @@ class OperationalErrors:
 
 application = OperationalErrors(app)
 if os.getenv("DYNO") and os.getenv("APP_ENV") in {"production", "staging"}:
-    application = HerokuHTTPS(application, os.environ["TELEGRAM_REDIRECT_URI"])
+    redirect_uri = os.getenv("TELEGRAM_REDIRECT_URI")
+    # Fail with a diagnosable message instead of a KeyError crash loop on deploy.
+    if not redirect_uri:
+        raise RuntimeError(
+            "TELEGRAM_REDIRECT_URI is required in cloud production/staging: "
+            "set it to the public HTTPS origin before deploying"
+        )
+    application = HerokuHTTPS(application, redirect_uri)

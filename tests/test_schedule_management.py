@@ -88,7 +88,7 @@ def test_overlapping_lesson_is_rejected(client: TestClient) -> None:
 
 def test_import_preview_never_saves_and_confirm_is_explicit(client: TestClient) -> None:
     preview_rows = [lesson_payload(weekday=6, starts_at="15:00", ends_at="16:00")]
-    client.app.state.schedule_import.extract = lambda *_: preview_rows
+    client.app.state.schedule_import.extract_with_warnings = lambda *_: (preview_rows, [])
     before = len(client.get("/api/bootstrap").json()["lessons"])
 
     preview = client.post(

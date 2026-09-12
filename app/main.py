@@ -880,7 +880,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Файл превышает лимит 6 МБ")
         try:
-            lessons = app.state.schedule_import.extract(
+            lessons, import_warnings = app.state.schedule_import.extract_with_warnings(
                 file.filename or "", file.content_type or "application/octet-stream", data
             )
         except ScheduleImportError as exc:
@@ -892,6 +892,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ) from exc
         return {
             "lessons": lessons,
+            "warnings": import_warnings,
             "source": file.filename,
             "saved": False,
             "default_excluded_types": ["СРСП"],

@@ -153,6 +153,22 @@ def test_invalid_tile_does_not_destroy_valid_lessons_from_another_tile():
     assert [row["subject"] for row in rows] == ["Алгоритмизация"]
 
 
+def test_failed_tile_is_reported_as_a_warning():
+    importer = service([ValueError("invalid synthetic tile"), [lesson()], []])
+    rows, warnings = importer.extract_with_warnings("schedule.png", "image/png", image_bytes(height=5000))
+    assert [row["subject"] for row in rows] == ["Алгоритмизация"]
+    assert len(warnings) == 1
+    assert "1 из 2" in warnings[0]
+    assert "фрагмент" in warnings[0]
+
+
+def test_fully_successful_tiles_produce_no_warnings():
+    importer = service([[lesson()], []])
+    rows, warnings = importer.extract_with_warnings("schedule.png", "image/png", image_bytes(height=5000))
+    assert [row["subject"] for row in rows] == ["Алгоритмизация"]
+    assert warnings == []
+
+
 def test_empty_recognition_and_parser_rejection_have_distinct_messages():
     with pytest.raises(ScheduleImportError, match="не удалось найти занятия"):
         service([[]]).extract("schedule.png", "image/png", image_bytes())
