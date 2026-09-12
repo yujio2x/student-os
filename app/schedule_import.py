@@ -101,6 +101,12 @@ class ScheduleImportService:
         self.model = model
 
     def extract(self, filename: str, content_type: str, data: bytes) -> list[dict]:
+        lessons, _ = self.extract_with_warnings(filename, content_type, data)
+        return lessons
+
+    def extract_with_warnings(
+        self, filename: str, content_type: str, data: bytes
+    ) -> tuple[list[dict], list[str]]:
         suffix = Path(filename or "").suffix.casefold()
         if suffix not in ALLOWED_SUFFIXES:
             raise ScheduleImportError("Поддерживаются только PDF, PNG, JPG и JPEG")
@@ -110,7 +116,7 @@ class ScheduleImportService:
             raise ScheduleImportError("Файл превышает лимит 6 МБ")
 
         if suffix == ".pdf":
-            return self._extract_pdf(data)
+            return self._extract_pdf(data), []
         prepared = self._prepare_image(suffix, data)
         if self.client is None:
             raise ScheduleImportError(
@@ -118,6 +124,7 @@ class ScheduleImportService:
                 "Файл не был сохранён."
             )
         raw_lessons: list[dict] = []
+        warnings: list[str] = []
         successful_tiles = 0
         last_error: Exception | None = None
         for tile_number, tile in enumerate(prepared.tiles, start=1):
@@ -163,6 +170,13 @@ class ScheduleImportService:
             except Exception as exc:
                 last_error = exc
 
+        failed_tiles = len(prepared.tiles) - successful_tiles
+        if failed_tiles:
+            warnings.append(
+                f"Не удалось распознать {failed_tiles} из {len(prepared.tiles)} фрагментов "
+                "изображения: часть занятий может отсутствовать. Попробуйте снова или "
+                "добавьте их вручную."
+            )
         if successful_tiles == 0 and last_error is not None:
             raise last_error
         if not raw_lessons:
@@ -175,7 +189,7 @@ class ScheduleImportService:
             raise ScheduleImportError(
                 "Расписание распознано частично, но в строках не хватает дня или времени."
             ) from exc
-        return self._deduplicate_and_sort(normalized)
+        return self._deduplicate_and_sort(normalized), warnings
 
     @classmethod
     def _prepare_image(cls, suffix: str, data: bytes) -> PreparedImage:
