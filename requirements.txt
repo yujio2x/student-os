@@ -1,11 +1,12 @@
-fastapi>=0.116,<1.0
-httpx>=0.28,<1.0
-openai>=2.0,<3.0
-pypdf>=6.0,<7.0
-python-dotenv>=1.0,<2.0
-python-multipart>=0.0.20,<1.0
-uvicorn[standard]>=0.35,<1.0
-PyJWT[crypto]>=2.10,<3.0
-Pillow>=11.0,<13.0
-psycopg[binary]>=3.2,<4.0
-sentry-sdk>=2.68,<3.0
+# Pinned to versions validated by the test suite; bump deliberately, one at a time.
+fastapi==0.141.1
+httpx==0.28.1
+openai==2.54.0
+pypdf==6.16.2
+python-dotenv==1.2.3
+python-multipart==0.0.32
+uvicorn[standard]==0.52.4
+PyJWT[crypto]==2.13.0
+Pillow==12.3.0
+psycopg[binary]==3.3.5
+sentry-sdk==2.68.1
