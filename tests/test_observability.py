@@ -1,6 +1,8 @@
 import json
 import os
 import unittest
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 import sentry_sdk
 from sentry_sdk.transport import Transport
@@ -8,6 +10,18 @@ from app import observability as monitoring
 
 
 class SafeEventsTest(unittest.TestCase):
+    def test_import_log_redacts_untrusted_request_id_and_response(self):
+        error = RuntimeError("private body")
+        error.response = SimpleNamespace(status_code=504, text="private image")
+        with self.assertLogs("app.observability", level="WARNING") as logs:
+            monitoring.import_diagnostic("preview_mapped", error, started=time.monotonic(),
+                                          request_id="private@example.com\nAuthorization: secret", mapped_status=502)
+        record = logs.records[0]
+        self.assertEqual(record.upstream_status, 504)
+        self.assertIsNone(record.request_id)
+        self.assertNotIn("private", "".join(logs.output))
+        self.assertNotIn("secret", "".join(logs.output))
+
     def tearDown(self):
         if monitoring._client:
             monitoring._client.close()
@@ -45,6 +59,24 @@ class SafeEventsTest(unittest.TestCase):
         self.assertEqual(captured[0]["environment"], "staging")
         self.assertEqual(captured[0]["tags"]["service"], "core")
         self.assertIsNone(monitoring.scrub({"event_id":"a"*32,"tags":{"category":"unknown"}}))
+        cause = ValueError("private image base64 SECRET")
+        error = RuntimeError("private Authorization sk-secret")
+        error.__cause__ = cause
+        request_id = "12345678-1234-1234-1234-123456789abc"
+        error.response = SimpleNamespace(status_code=504)
+        monitoring.capture_import_exception("schedule_import_preview_failed", error, request_id=request_id)
+        self.assertEqual(len(captured), 2)
+        self.assertEqual([v["type"] for v in captured[1]["exception"]["values"]],
+                         ["ValueError", "RuntimeError"])
+        self.assertNotIn("private", json.dumps(captured[1]))
+        self.assertNotIn("SECRET", json.dumps(captured[1]))
+        self.assertNotIn("sk-secret", json.dumps(captured[1]))
+        self.assertEqual(captured[1]["tags"]["request_id"], request_id)
+        self.assertEqual(captured[1]["tags"]["pipeline_stage"], "preview_mapped")
+        self.assertEqual(captured[1]["tags"]["http_status"], "502")
+        self.assertEqual(captured[1]["tags"]["upstream_status"], "504")
+        monitoring.capture_import_exception("schedule_import_preview_failed", error, request_id="private token")
+        self.assertNotIn("request_id", captured[2]["tags"])
 
     def test_untrusted_environment_and_category_are_not_leaked(self):
         event = {"event_id":"a"*32, "tags":{"category":"synthetic_check"},

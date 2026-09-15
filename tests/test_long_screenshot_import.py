@@ -75,6 +75,49 @@ def test_normal_screenshot_still_uses_one_recognition_tile():
     assert len(importer.client.responses.calls) == 1
 
 
+def test_failed_tile_logs_safe_diagnostics(caplog):
+    error = RuntimeError("private schedule data:image/png;base64,SECRET Authorization sk-secret")
+    error.status_code = 429
+    importer = service([error, [lesson()]])
+    assert importer.extract("schedule.png", "image/png", image_bytes(height=5000))
+    record = next(r for r in caplog.records if getattr(r, "pipeline_stage", None) == "tile_upstream_request")
+    assert (record.tile_number, record.tile_count, record.exception_class, record.upstream_status) == (1, 2, "RuntimeError", 429)
+    assert record.elapsed_ms >= 0
+    assert record.sanitized_message == "upstream_http_error"
+    assert "SECRET" not in caplog.text and "private schedule" not in caplog.text
+
+
+def test_all_failed_tiles_log_and_raise_original_chain_without_capture(monkeypatch, caplog):
+    from app import observability
+    captured = []
+    monkeypatch.setattr(observability, "capture_import_exception", lambda category, exc: captured.append((category, exc)))
+    cause = ValueError("private")
+    error = RuntimeError("private upstream")
+    error.__cause__ = cause
+    importer = service([ValueError("first"), error])
+    with pytest.raises(RuntimeError) as raised:
+        importer.extract("schedule.png", "image/png", image_bytes(height=5000))
+    assert raised.value is error and raised.value.__cause__ is cause
+    assert captured == []
+    frames = []
+    traceback = raised.value.__traceback__
+    while traceback:
+        frames.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+    assert "create" in frames  # The original upstream traceback is retained.
+    assert any(getattr(r, "pipeline_stage", None) == "all_tiles_failed" for r in caplog.records)
+
+
+def test_malformed_tile_response_logs_parse_stage(caplog):
+    importer = service([])
+    importer.client.responses.create = lambda **kwargs: SimpleNamespace(output_text="private schedule SECRET")
+    with pytest.raises(json.JSONDecodeError):
+        importer.extract("schedule.png", "image/png", image_bytes())
+    record = next(r for r in caplog.records if getattr(r, "pipeline_stage", None) == "tile_response_parse")
+    assert record.exception_class == "JSONDecodeError"
+    assert "private schedule" not in caplog.text and "SECRET" not in caplog.text
+
+
 def test_tall_screenshot_tiles_with_overlap_and_imports_in_order():
     data = image_bytes(height=7000)
     prepared = ScheduleImportService._prepare_image(".png", data)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import secrets
+import time
+from app import observability
 import asyncio
 import base64
 import binascii
@@ -873,11 +875,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/schedule/import/preview")
     async def preview_schedule_import(
-        file: UploadFile = File(...), session: dict = Depends(csrf_session)
+        request: Request, file: UploadFile = File(...), session: dict = Depends(csrf_session)
     ) -> dict:
+        started = time.monotonic()
+        request_id = request.headers.get("X-Request-ID")
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         await file.close()
         if len(data) > MAX_UPLOAD_BYTES:
+            observability.import_diagnostic("preview_mapped", started=started, request_id=request_id, mapped_status=413)
             raise HTTPException(status_code=413, detail="Файл превышает лимит 6 МБ")
         try:
             lessons, import_warnings = app.state.schedule_import.extract_with_warnings(
@@ -885,11 +890,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except ScheduleImportError as exc:
             status = 503 if "OPENAI_API_KEY" in str(exc) else 422
+            observability.import_diagnostic("preview_mapped", exc, started=started, request_id=request_id, mapped_status=status)
             raise HTTPException(status_code=status, detail=str(exc)) from exc
         except Exception as exc:
+            observability.import_diagnostic("preview_mapped", exc, started=started, request_id=request_id, mapped_status=502)
+            observability.capture_import_exception("schedule_import_preview_failed", exc, request_id=request_id)
             raise HTTPException(
                 status_code=502, detail="Распознавание не завершено; расписание не изменено"
             ) from exc
+        observability.import_diagnostic("preview_mapped", started=started, request_id=request_id, mapped_status=200)
         return {
             "lessons": lessons,
             "warnings": import_warnings,

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportService
+from app.schedule_import import MAX_UPLOAD_BYTES, ScheduleImportService, ScheduleImportError
 
 
 @pytest.fixture()
@@ -34,6 +36,54 @@ def lesson_payload(**overrides) -> dict:
     }
     payload.update(overrides)
     return payload
+
+
+@pytest.mark.parametrize("error,status", [
+    (RuntimeError("private upstream failure"), 502),
+    (ScheduleImportError("invalid schedule"), 422),
+    (ScheduleImportError("missing OPENAI_API_KEY"), 503),
+])
+@pytest.mark.parametrize("all_tiles", [False, True])
+def test_preview_failure_diagnostics_and_mapping(client, monkeypatch, caplog, error, status, all_tiles):
+    from app import observability
+    captured = []
+    original_capture = observability.capture_import_exception
+    def capture(category, exc, **kwargs):
+        captured.append((category, exc))
+        original_capture(category, exc, **kwargs)
+    monkeypatch.setattr(observability, "capture_import_exception", capture)
+    sentry = Mock()
+    monkeypatch.setattr(observability, "_client", sentry)
+    def fail(*args):
+        raise error
+    if all_tiles:
+        importer = client.app.state.schedule_import
+        importer.client = SimpleNamespace(responses=SimpleNamespace(create=Mock(side_effect=error)))
+        tile = SimpleNamespace(mime="image/png", data=b"private image")
+        monkeypatch.setattr(importer, "_prepare_image", lambda *args: SimpleNamespace(tiles=(tile, tile)))
+    else:
+        client.app.state.schedule_import.extract_with_warnings = fail
+    before = client.get("/api/bootstrap").json()["lessons"]
+    request_id = "12345678-1234-1234-1234-123456789abc"
+    response = client.post("/api/schedule/import/preview", headers={"X-Request-ID": request_id},
+                           files={"file": ("private.png", b"fixture", "image/png")})
+    assert response.status_code == status
+    assert client.get("/api/bootstrap").json()["lessons"] == before
+    record = next(r for r in caplog.records if getattr(r, "pipeline_stage", None) == "preview_mapped")
+    assert record.mapped_status == status and record.request_id == request_id
+    assert captured == ([("schedule_import_preview_failed", error)] if status == 502 else [])
+    assert sentry.capture_event.call_count == (1 if status == 502 else 0)
+    if all_tiles:
+        assert importer.client.responses.create.call_count == 2
+        assert any(getattr(r, "pipeline_stage", None) == "all_tiles_failed" for r in caplog.records)
+    if status == 502:
+        event = sentry.capture_event.call_args.args[0]
+        clean = observability.scrub({**event, "event_id": "a" * 32})
+        assert clean["tags"]["request_id"] == request_id
+        assert clean["tags"]["http_status"] == "502"
+        assert clean["tags"]["pipeline_stage"] == "preview_mapped"
+        assert clean["exception"]["values"][-1]["type"] == "RuntimeError"
+    assert "private upstream" not in caplog.text and "OPENAI_API_KEY" not in caplog.text
 
 
 def test_create_edit_delete_lesson_and_persist(client: TestClient) -> None:

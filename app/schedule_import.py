@@ -4,6 +4,8 @@ import base64
 import io
 import json
 import re
+import time
+from app import observability
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -127,7 +129,10 @@ class ScheduleImportService:
         warnings: list[str] = []
         successful_tiles = 0
         last_error: Exception | None = None
+        recognition_started = time.monotonic()
         for tile_number, tile in enumerate(prepared.tiles, start=1):
+            tile_started = time.monotonic()
+            stage = "tile_upstream_request"
             try:
                 response = self.client.responses.create(
                     model=self.model,
@@ -161,6 +166,7 @@ class ScheduleImportService:
                     text={"format": {"type": "json_schema", "name": "schedule_preview", "schema": IMPORT_SCHEMA, "strict": True}},
                     store=False,
                 )
+                stage = "tile_response_parse"
                 parsed = json.loads(response.output_text)
                 lessons = parsed.get("lessons")
                 if not isinstance(lessons, list):
@@ -168,6 +174,8 @@ class ScheduleImportService:
                 successful_tiles += 1
                 raw_lessons.extend(item for item in lessons if isinstance(item, dict))
             except Exception as exc:
+                observability.import_diagnostic(stage, exc, started=tile_started,
+                                                tile_number=tile_number, tile_count=len(prepared.tiles))
                 last_error = exc
 
         failed_tiles = len(prepared.tiles) - successful_tiles
@@ -178,6 +186,8 @@ class ScheduleImportService:
                 "добавьте их вручную."
             )
         if successful_tiles == 0 and last_error is not None:
+            observability.import_diagnostic("all_tiles_failed", last_error,
+                                            started=recognition_started, tile_count=len(prepared.tiles))
             raise last_error
         if not raw_lessons:
             raise ScheduleImportError(
