@@ -70,6 +70,8 @@ class Settings:
     project_github_url: str = DEFAULT_PROJECT_GITHUB_URL
     project_telegram_url: str = ""
     support_email: str = ""
+    telegram_delivery_mode: str = "disabled"
+    telegram_webhook_secret: str = field(default="", repr=False)
 
 
 def project_metadata(settings: Settings) -> dict[str, str]:
@@ -125,4 +127,6 @@ def load_settings() -> Settings:
         ).strip(),
         project_telegram_url=os.getenv("PROJECT_TELEGRAM_URL", "").strip(),
         support_email=os.getenv("SUPPORT_EMAIL", "").strip(),
+        telegram_delivery_mode=os.getenv("TELEGRAM_DELIVERY_MODE", "disabled").strip().lower(),
+        telegram_webhook_secret=os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip(),
     )

@@ -1677,3 +1677,77 @@ answer with a useful check, readable `π` notation and no raw LaTeX delimiters. 
 separate defense message appeared only after the owner pressed `Как защитить`, so it was
 an explicit interaction rather than duplicate delivery. Heroku showed one Eco worker,
 one polling lease acquisition and a healthy restart of `worker.1` after the release.
+
+## 2026-09-30 — September Eco incident and one-web correction
+
+Authenticated Heroku Notifications confirmed Sep 23 06:12 80% and Sep 28 06:10
+exhaustion. Billing shows Bot 525.68 h + Core 515.62 h = 1041.30 h, no third usage
+row. CLI quota differs by 1 h; this discrepancy is preserved, not assigned to an
+invented consumer. Two current owned apps, no pipelines, one existing Essential-0
+add-on at $5. Bot latch enabled Sep 6 03:21:27 UTC; worker time to final idle
+~525.86 h supports effectively continuous operation. Core slept/woke in retained
+Sep 26-28 logs, but monthly usage exceeded the <=200 h target. No scheduled
+production health ping/monitor found in tracked repos/add-ons; external services
+and deleted historical apps are not exhaustively disproved. Evidence and interval
+assumptions are in HEROKU_ECO_INCIDENT_2026-09.md.
+
+Root cause: two independently active Eco processes shared 1000 hours. $10 within
+$13 credits was not a runtime capacity guarantee. Sep1->23 estimated average
+1.498 simultaneous dynos; Sep23->28 estimated 1.667, consistent with continuous
+worker + intermittently awake web. Per-app totals measured; process/day attribution
+estimated. No blame assigned to unexpected traffic without evidence.
+
+Implemented default-off authenticated POST /api/telegram/webhook, 64 KiB streamed
+bound, fail-closed config/secret validation, duplicate/conflict checks, fast local
+pre-checkout, durable jobs and same-process serial consumer. Durable input and the
+existing PostgreSQL Bot payment outbox precede paid-update 2xx. Core retains
+identity/AI/prices/entitlements/Stars and charge-id exactly-once business boundary.
+Four-module adapter source snapshot is pinned to Bot
+93ef0defa0d63ff3e6ab8dff2772b2c9156b5725. No whole-bot merge, second ledger, paid
+queue or circular deployment; signed Core ASGI bridge reused in-process.
+
+Jobs have ownership/renewed leases, stale recovery, three bounded attempts,
+seven-day completed dedupe retention and persistent review state. Intent fences,
+cached results and per-job initial context protect known-completion restart/retry.
+Unknown external send/AI outcomes require reconciliation; exactly-once visible
+delivery after unknown send is not promised. Photo context persists file_id rather
+than raw bytes, with existing expiration/pricing. Payment retry is independent of
+response output and survives restart/outage/lost commit response.
+
+Bot refuses webhook mode and checks remote webhook under the existing shared
+polling advisory lease before run_polling can delete it. Core shares the lease.
+Owner-only + CSRF-protected register/status/delete endpoints and explicit-click
+admin controls avoid secret values in browser/CLI. Pending updates preserved;
+status returns only booleans/counts. No owner login automation or Stars charge.
+
+Local checks: Core 177 passed/27 environment skips with cross-project suite enabled;
+Bot 109 unittest cases OK/5 PostgreSQL skips; Python compile, five frontend runtime
+suites, admin JS syntax and diff checks passed. Bot CI 36692911514 succeeded,
+including PostgreSQL. Local initdb was blocked by Windows application control;
+production DB credentials not fetched. Core PostgreSQL verification is delegated
+to existing GitHub CI with new journal/dispatch cases. Staged secret scans required
+before every commit.
+
+Infrastructure: already-idle Bot scaled to 0:Eco to prevent automatic October return
+to the old topology. No new resources, restarts, one-offs or purchases. Bot commit
+pushed from isolated checkout based on current origin/main; original C:\student-ai-bot
+app/bot.py/assets/outputs edits preserved. Heroku deployment rejected by automatic
+approval review as premature production deploy before quota/secret/cutover; no
+deployment command ran. Heroku Core v36/Bot v19 remain old releases; webhook inactive.
+
+One continuous web: 720/744 h in 30/31 days, headroom 280/256 h. Runbook caps extras
+at 24 h/month, leaving >=232 h reserve. Proof assumes no other Eco process; arbitrary
+later scaling/new apps can still consume the pool. $5 Eco + $5 existing Essential-0
+= $10/month <=$13 eligible credits; expected $0 cash excluding other charges/taxes.
+
+HEROKU_WEBHOOK_RUNBOOK.md records config/manual secret entry, October quota gate,
+stop-polling-first cutover, preserving registration, synthetic rollback checks,
+temporary rollback cost and required real idle/wake smoke after renewal. Actual
+webhook cold start/end-to-end activation pending. Historical Core 5-13 s wake is not
+a measured new-runtime SLA. Telegram documents retries/24h retention but no exact
+webhook timeout/retry schedule. Outage updates may already have expired; no invented
+no-loss claim.
+
+Privacy limitation: historical release listing unexpectedly exposed an old
+credential-shaped config-key label; not reproduced in docs or reused. Further
+metadata uses safe projections. No config values/.env requested for audit/tests.

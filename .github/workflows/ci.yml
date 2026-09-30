@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: yujio2x/student-ai-bot
-          ref: 98ad33fdf54ac0d5bf25af1cdca8c9931233f445
+          ref: 93ef0defa0d63ff3e6ab8dff2772b2c9156b5725
           path: .integration-bot
           persist-credentials: false
       - run: python -m pytest tests/test_postgres.py -q
@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: yujio2x/student-ai-bot
-          ref: 98ad33fdf54ac0d5bf25af1cdca8c9931233f445
+          ref: 93ef0defa0d63ff3e6ab8dff2772b2c9156b5725
           path: .integration-bot
           persist-credentials: false
       - run: python -m pytest tests -q

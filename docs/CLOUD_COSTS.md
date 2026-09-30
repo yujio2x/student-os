@@ -1,5 +1,7 @@
 # Heroku beta budget — verified 2026-09-04
 
+> Superseded for production by the September 30 incident fix: exactly ONE Eco web process, Bot worker=0, webhook/consumer in Core. Worst-case 31-day steady runtime 744 h with 256 h reserve. Resource subtotal stays $10/month. The two-process assumptions below are historical and failed their usage target. See HEROKU_ECO_INCIDENT_2026-09.md and HEROKU_WEBHOOK_RUNBOOK.md.
+
 Selected: Option A, two **personal Cedar** apps in Europe, shared Eco subscription.
 
 | Resource | Plan | Monthly maximum |

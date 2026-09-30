@@ -166,3 +166,32 @@ def test_postgres_outbox_to_postgres_core_exactly_once(pg_factory, monkeypatch, 
         module.test_payment_commit_lost_response_restart_concurrent_retry(tuple(state))
     finally:
         setup.close()
+
+
+def test_telegram_journal_on_postgres(pg_factory, tmp_path):
+    from app.telegram_journal import TelegramJournal, UncertainEffect
+    from test_telegram_webhook import update
+    database = pg_factory(tmp_path / 'telegram-journal')
+    database.initialize()
+    now = [1000]
+    journal = TelegramJournal(database, clock=lambda:now[0])
+    journal.initialize()
+    assert journal.enqueue(update()) and not journal.enqueue(update())
+    first = journal.claim()
+    assert journal.effect(first, 'send', {'text':'fixture'}) == (False,None)
+    now[0] += 301
+    reopened = TelegramJournal(database, clock=lambda:now[0])
+    reopened.initialize()
+    second = reopened.claim()
+    assert second['owner'] != first['owner']
+    with pytest.raises(UncertainEffect):
+        reopened.effect(second, 'send', {'text':'fixture'})
+    reopened.finish(second, 'review')
+    assert reopened.counts() == {'review':1}
+    reopened.save_context(123, {'photo': {'file_id':'fixture'}})
+    assert reopened.context(123)['photo']['file_id'] == 'fixture'
+
+
+def test_duplicate_webhook_text_on_postgres(pg_factory, monkeypatch, tmp_path):
+    from test_telegram_webhook import test_duplicate_text_retry_one_engine_and_one_answer
+    test_duplicate_text_retry_one_engine_and_one_answer(tmp_path, monkeypatch)

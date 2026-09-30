@@ -1,7 +1,8 @@
 # Production operations
 
-Production topology is one Eco Core web process, one Eco Bot worker after cutover,
-and the shared Essential-0 PostgreSQL database. Do not add keepalive traffic: the
+Production target after the September 30 incident is one Eco Core web process with
+Telegram webhook/durable consumer, Bot worker=0, and the shared Essential-0 PostgreSQL
+database. Live cutover gates are in HEROKU_WEBHOOK_RUNBOOK.md. Do not add keepalive traffic: the
 Core is expected to sleep after inactivity and use bounded client retries. Never
 change cost, add resources, restore a database, or delete production data without
 owner approval.
@@ -21,7 +22,8 @@ owner approval.
   and delivered counts. Check bridge/Sentry categories and Core health. Do not edit,
   delete, or manually replay payment rows; the retry loop and Core charge uniqueness
   are the recovery boundary.
-- **Eco hours low:** keep the worker at one and allow the Core to sleep naturally.
+- **Eco hours low:** keep the Bot worker at ZERO. Audit all account formations and
+  one-offs against the single-web capacity proof; do not rely on Core sleep.
   Do not create a keepalive or scale another dyno. Escalate a plan change to the
   owner before the shared Eco pool is exhausted.
 - **Sentry alert:** triage by service, environment, release, and allowlisted category.

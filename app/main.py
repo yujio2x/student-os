@@ -266,6 +266,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def cleanup_photos():
         while True:
             await asyncio.to_thread(photo.cleanup)
+            if config.telegram_delivery_mode == "webhook":
+                await asyncio.to_thread(telegram_journal.cleanup)
             await asyncio.sleep(60)
 
     @asynccontextmanager
@@ -274,6 +276,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         oidc.initialize()
         photo.initialize()
         restore.initialize()
+        if config.telegram_delivery_mode == "webhook":
+            from app.telegram_runtime import TelegramRuntime
+            await asyncio.to_thread(telegram_journal.initialize)
+            app.state.telegram_runtime = TelegramRuntime(app, config, telegram_journal)
+            await app.state.telegram_runtime.start()
         if config.environment == "development" and config.dev_login_enabled:
             local_user = database.ensure_local_user()
             database.seed_demo(local_user["id"])
@@ -281,11 +288,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if app.state.telegram_runtime is not None:
+                await app.state.telegram_runtime.stop()
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
 
     app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
+    from app.telegram_webhook import install as install_telegram_webhook
+    telegram_journal = install_telegram_webhook(app, config, database)
     app.add_middleware(BridgeBodyLimitMiddleware)
 
     @app.middleware("http")
@@ -362,6 +373,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not supplied or not secrets.compare_digest(supplied, session["csrf_token"]):
             raise HTTPException(status_code=403, detail="Недействительный CSRF-токен")
         return session
+
+    @app.post("/api/admin/telegram/webhook/{action}")
+    async def telegram_webhook_action(action: str, _: dict = Depends(admin_csrf_session)):
+        if action not in {"register", "status", "delete"}:
+            raise HTTPException(422, "Invalid webhook action")
+        runtime = app.state.telegram_runtime
+        if runtime is None:
+            raise HTTPException(503, "Webhook runtime disabled")
+        try:
+            return await runtime.webhook_action(action)
+        except Exception:
+            raise HTTPException(503, "Webhook operation failed; inspect redacted status") from None
 
     async def bridge_request(request: Request) -> None:
         if not config.bot_bridge_secret:
