@@ -8,6 +8,8 @@ The audit changed Bot worker formation to 0:Eco on September 30. Both runtimes h
 
 Go-live requires green Core/Bot CI (including existing PostgreSQL CI), tested commits deployed, owner-created webhook secret synced, positive new Eco quota and a confirmed stopped polling formation. Current code preparation is not evidence of live webhook activation. Build/release is separate from dyno execution; no one-off is needed to register the webhook.
 
+Verified code checkpoint: Core bde6d98 / CI 36694595230 and Bot 93ef0de / CI 36692911514 are green, including PostgreSQL. Core source and docs may have a later documentation-only checkpoint commit. Heroku deploy did not run: automatic approval review rejected preparation deployment as premature, so explicit owner approval is the remaining deployment gate. The current old releases are Core v36/Bot v19; Bot ps confirms No dynos. Secret presence/sync and live webhook status have not been inspected. No setWebhook/deleteWebhook was executed.
+
 ## Repository ownership
 
 Core's student_telegram package vendors exactly four adapter modules from the reviewed Bot commit recorded in manifest.json, with only their internal package imports rewritten. Core's script refreshes that snapshot explicitly; tests verify hashes. Core does not clone/import the complete Bot repo during deployment, execute app.bot, open its SQLite, or load another AI engine. CI pins the same Bot commit for cross-project tests. No circular build or deployment dependency.

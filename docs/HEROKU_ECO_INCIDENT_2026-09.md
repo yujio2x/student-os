@@ -1,6 +1,6 @@
 # September 2026 Eco incident
 
-Status: forensic evidence collected 2026-09-30; webhook implementation locally tested (Core 177 passed/27 expected environment skips; Bot 109 tests/5 expected PostgreSQL skips). Bot CI including PostgreSQL passed for 93ef0de. Core PostgreSQL CI remains to be verified after push. Live deployment/cutover/cold-start QA are pending. No purchased resources, runtime restarts or real payments were used in the audit. Bot formation was subsequently set to 0:Eco to prevent October restart of the old topology.
+Status: forensic evidence collected 2026-09-30; webhook implementation locally tested (Core 177 passed/27 expected environment skips; Bot 109 tests/5 expected PostgreSQL skips). Both full CI and PostgreSQL CI passed: Core bde6d98, run 36694595230; Bot 93ef0de, run 36692911514. Live deployment/cutover/cold-start QA are pending. No purchased resources, runtime restarts or real payments were used in the audit. Bot formation was subsequently set to 0:Eco to prevent October restart of the old topology.
 
 ## Impact and evidence
 
@@ -34,7 +34,7 @@ Use September 1 00:00 local as the baseline. This is a calendar baseline, not ap
 
 Assuming worker continuously active after Sep 6 08:21:27 local, first interval worker ~405.84 h and residual web/one-offs ~394.16 h. In the second interval worker ~119.97 h and residual web/one-offs ~80.03 h, or ~16 h/day. These estimates are consistent with one always-on worker plus a frequently awake web, but must not be substituted for the exact monthly app totals. The extra 41.30 h in the final dashboard cannot be allocated to either notification interval without historical metering.
 
-Core 515.62 h is at least 90.8% of the 568.14 h between app creation and shutdown (actual first web deployment was later). Bot is effectively always-on, Core sleeps intermittently but substantially exceeds the intended 200 h/month. Full-month potential of two continuous dynos is 1440/1488 h, exceeding the pool by 440/488 h.
+Core app total 515.62 h is 90.8% of the 568.14 h between app creation and shutdown (actual first web deployment was later). This includes Core one-offs, so an exact web-only awake percentage cannot be claimed. Bot is effectively always-on, Core sleeps intermittently but its app substantially exceeds the intended 200 h/month. Full-month potential of two continuous dynos is 1440/1488 h, exceeding the pool by 440/488 h.
 
 ## Monitoring and historical limitations
 

@@ -1751,3 +1751,20 @@ no-loss claim.
 Privacy limitation: historical release listing unexpectedly exposed an old
 credential-shaped config-key label; not reproduced in docs or reused. Further
 metadata uses safe projections. No config values/.env requested for audit/tests.
+
+### Final repository/CI checkpoint (September 30)
+
+Core implementation bde6d98f23baef61f3bf53f51e551756bfa51fdf pushed; full CI and
+PostgreSQL job [36694595230](https://github.com/yujio2x/student-os/actions/runs/36694595230)
+both succeeded. Bot implementation 93ef0defa0d63ff3e6ab8dff2772b2c9156b5725 pushed;
+[36692911514](https://github.com/yujio2x/student-ai-bot/actions/runs/36692911514) succeeded,
+including PostgreSQL outbox. New webhook suite 20 passed after final same-process
+timeout/context fixes; local full suite 177 passed/27 skipped. Staged scans returned
+zero credential patterns. No deployment approval is inferred from CI success.
+
+Fresh Heroku verification: Bot No dynos, latest release still v19. Core deployment
+remains v36 from the audit. September quota still exhausted. Owner webhook secret
+presence/sync has not been confirmed; Core mode remains unactivated. The only live
+infrastructure change was worker=0. Next external gate is explicit approval for the
+prepared Heroku releases after the automatic deployment rejection, followed by
+quota/config/manual smoke gates in the runbook.
